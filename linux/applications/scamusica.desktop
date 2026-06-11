@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Scamusica
+GenericName=Scamusica Player
+Comment=Scamusica Music Player
+Exec=/opt/scamusica/bin/Scamusica
+Icon=/opt/scamusica/share/icons/scamusica.png
+Terminal=false
+Categories=Audio;Music;Player;
+StartupWMClass=Scamusica

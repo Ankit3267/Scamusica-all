@@ -1,0 +1,420 @@
+.root {
+    -fx-background-color: linear-gradient(to bottom, #ffffff, #8AB5CA);
+    -fx-font-family: "Poppins", "Noto Sans", "Noto Sans JP", "Noto Sans SC", "Noto Sans Arabic", "Noto Sans Devanagari", System;
+}
+
+.app-header {
+    -fx-background-color: transparent;
+    -fx-padding: 10 40 10 40;
+}
+
+.meta-text {
+    -fx-font-size: 13px;
+    -fx-text-fill: #2c2c2c;
+    -fx-font-weight: bold;
+}
+
+.support-pill {
+    -fx-background-color: #7e61cc;
+    -fx-text-fill: white;
+    -fx-background-radius: 18;
+    -fx-padding: 6 8;
+    -fx-font-weight: bold;
+}
+
+.sidebar {
+    -fx-background-color: white;
+    -fx-padding: 30 20 30 20;
+    -fx-min-width: 58px;
+    -fx-pref-width: 58px;
+    -fx-max-width: 58px;
+}
+
+.sidebar-button {
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+    -fx-padding: 10;
+    -fx-background-radius: 10;
+    -fx-pref-width: 40px;
+    -fx-pref-height: 40px;
+}
+
+.sidebar-button .ikonli-font-icon {
+    -fx-icon-color: #222;
+    -fx-font-size: 18px;
+}
+
+.sidebar-button:hover {
+    -fx-background-color: rgba(126, 97, 204, 0.08);
+}
+
+.sidebar-button.sidebar-active {
+    -fx-background-color: #6E68A5;
+}
+
+.sidebar-button.sidebar-active .ikonli-font-icon {
+    -fx-icon-color: white;
+}
+
+.settings-icon {
+    -fx-text-fill: #333;
+    -fx-font-size: 18px;
+    -fx-opacity: 0.6;
+}
+
+.settings-icon:hover {
+    -fx-text-fill: #6E68A5;
+    -fx-opacity: 1.0;
+}
+
+.heading {
+    -fx-font-size: 14px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #2c2c39;
+    -fx-padding: 0 0 6 0;
+}
+
+.left-album {
+    -fx-padding: 20 20 10 72;
+}
+
+.album-art-left {
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.12), 12, 0, 0, 6);
+    -fx-background-radius: 12;
+    -fx-padding: 6;
+}
+
+.music-note-icon {
+    -fx-icon-color: #222;
+    -fx-font-size: 16px;
+}
+
+.songs-label-left {
+    -fx-font-size: 13px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #222;
+}
+
+.playlist-visual {
+    -fx-background-color: transparent;
+    -fx-border-color: #B4B4B4;
+    -fx-border-width: 1.2;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 4 8 4 12;
+    -fx-min-height: 30;
+    -fx-pref-height: 30;
+    -fx-max-height: 30;
+    -fx-pref-width: 500;
+    -fx-min-width: 500;
+    -fx-max-width: 500;
+    -fx-alignment: center-left;
+    -fx-effect: none;
+}
+
+.playlist-visual-label {
+    -fx-text-fill: #635F5F;
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-font-family: "Poppins", "Noto Sans", "Noto Sans JP", "Noto Sans SC", "Noto Sans Arabic", "Noto Sans Devanagari", System;
+}
+
+.playlist-chevron-circle {
+    -fx-background-color: #6E68A5;
+    -fx-background-radius: 999;
+    -fx-pref-width: 25;
+    -fx-pref-height: 25;
+    -fx-min-width: 25;
+    -fx-min-height: 25;
+    -fx-max-width: 25;
+    -fx-max-height: 25;
+    -fx-alignment: center;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.08), 6, 0, 0, 2);
+}
+
+.playlist-chevron-icon {
+    -fx-icon-color: white;
+}
+
+.dropdown-card {
+    -fx-background-color: white;
+    -fx-background-radius: 14;
+    -fx-border-radius: 14;
+    -fx-padding: 8;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.12), 14, 0, 0, 6);
+    -fx-border-color: rgba(0, 0, 0, 0.06);
+    -fx-border-width: 0.5;
+    -fx-pref-width: 360;
+}
+
+.dropdown-list {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+    -fx-background-insets: 0;
+}
+
+.dropdown-list .list-cell {
+    -fx-font-size: 15px;
+    -fx-text-fill: #222;
+    -fx-font-weight: bold;
+    -fx-padding: 10 18 10 18;
+    -fx-border-color: rgba(0, 0, 0, 0.06);
+    -fx-border-width: 0 0 1 0;
+    -fx-background-color: transparent;
+}
+
+.dropdown-list .list-cell:hover {
+    -fx-background-color: rgba(0, 0, 0, 0.03);
+}
+
+.dropdown-list .list-cell:filled:selected,
+.dropdown-list .list-cell:filled:selected:focused {
+    -fx-background-color: rgba(126, 97, 204, 0.06);
+}
+
+.dropdown-list .scroll-bar {
+    -fx-pref-width: 0;
+    -fx-opacity: 0;
+}
+
+.player-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #2c2c39;
+    -fx-padding: 4 0 4 0;
+}
+
+.player-progress {
+    -fx-pref-height: 4;
+    /* thinner */
+    -fx-background-radius: 4;
+    -fx-padding: 0;
+}
+
+.player-progress .track {
+    -fx-background-radius: 4;
+    -fx-pref-height: 4;
+    -fx-background-color: linear-gradient(to right, #00000040 0%, #00000040 100%);
+}
+
+.player-progress .thumb {
+    -fx-background-color: #7e61cc;
+    -fx-background-radius: 10;
+    -fx-pref-width: 12;
+    -fx-pref-height: 12;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.12), 3, 0, 0, 1);
+}
+
+.volume-slider {
+    -fx-pref-height: 16;
+}
+
+.volume-slider .track {
+    -fx-background-color: linear-gradient(to right, #00000040 0%, #00000040 100%);
+    -fx-background-radius: 4;
+    -fx-pref-height: 4;
+}
+
+.volume-slider .thumb {
+    -fx-background-color: #7e61cc;
+    -fx-pref-width: 12;
+    -fx-pref-height: 12;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.12), 3, 0, 0, 1);
+}
+
+.time-label {
+    -fx-font-size: 14px;
+    -fx-text-fill: #000000;
+    -fx-padding: 0 6;
+    -fx-font-weight: 600;
+}
+
+
+.controls-wrapper {
+    -fx-alignment: center;
+    -fx-padding: 6 0 6 0;
+    /* reduced vertical padding */
+}
+
+.small-control-box {
+    -fx-padding: 0;
+    -fx-alignment: center;
+    -fx-background-color: transparent;
+    -fx-spacing: 4;
+}
+
+.control-icon.small-control {
+    -fx-min-width: 46px;
+    -fx-min-height: 46px;
+    -fx-pref-width: 46px;
+    -fx-pref-height: 46px;
+    -fx-max-width: 46px;
+    -fx-max-height: 46px;
+    -fx-background-radius: 10;
+    -fx-background-color: transparent;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.06), 6, 0, 0, 2);
+}
+
+.play-control-box {
+    -fx-alignment: center;
+    -fx-padding: 0 4 0 4;
+    -fx-background-color: transparent;
+}
+
+.forward-control-box {
+    -fx-alignment: center;
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+}
+
+.control-icon {
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+    -fx-padding: 0;
+    -fx-background-radius: 12;
+    -fx-min-width: 55px;
+    -fx-min-height: 55px;
+    -fx-pref-width: 55px;
+    -fx-pref-height: 55px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.06), 6, 0, 0, 2);
+}
+
+.control-icon .ikonli-font-icon {
+    -fx-icon-color: #6E68A5;
+    -fx-font-size: 25px;
+}
+
+.control-icon:hover {
+    -fx-background-color: rgba(126, 97, 204, 0.08);
+}
+
+.big-play-button .ikonli-font-icon {
+    -fx-icon-color: white;
+}
+
+.control-icon.control-active {
+    -fx-background-color: #6E68A5;
+    -fx-background-radius: 10;
+}
+
+.control-icon.control-active .ikonli-font-icon {
+    -fx-icon-color: white;
+}
+
+.bottom-bar {
+    -fx-background-color: transparent;
+    -fx-padding: 4 24 4 24;
+    -fx-alignment: center-left;
+}
+
+.download-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: #2c2c39;
+    -fx-font-weight: 800;
+    -fx-padding: 0 0 10 110;
+}
+
+.volume-icon .ikonli-font-icon,
+.download-label .ikonli-font-icon {
+    -fx-icon-color: #3a3a3a;
+}
+
+.download-icon.ikonli-font-icon {
+    -fx-icon-color: #6E68A5;
+}
+
+.download-label-left {
+    -fx-font-size: 13px;
+    -fx-text-fill: #2c2c39;
+    -fx-font-weight: 800;
+    -fx-padding: 6 0 0 6;
+    -fx-alignment: center-left;
+}
+
+@media screen and (max-width: 900px) {
+    .player-progress {
+        -fx-pref-width: 360;
+    }
+
+    .big-play-button {
+        -fx-min-width: 56px;
+        -fx-min-height: 56px;
+        -fx-pref-width: 56px;
+        -fx-pref-height: 56px;
+    }
+
+    .left-album {
+        -fx-padding: 12 12 10 20;
+    }
+}
+
+/* Language Selector with Custom Arrow */
+.language-selector {
+    -fx-background-color: #6E68A5;
+    -fx-border-color: #6E68A5;
+    -fx-border-width: 1px;
+    -fx-background-radius: 18;
+    -fx-border-radius: 18;
+    -fx-padding: 4 10 4 10;
+    -fx-font-size: 12px;
+    -fx-font-family: "Poppins", "Noto Sans", "Noto Sans JP", "Noto Sans SC", "Noto Sans Arabic", "Noto Sans Devanagari";
+    -fx-text-fill: white;
+    -fx-pref-width: 140;
+    -fx-cursor: hand;
+}
+
+.language-selector .list-view {
+    -fx-background-color: #87CEEB;
+    /* Purple dropdown background */
+    -fx-border-color: #6E68A5;
+    -fx-control-inner-background: white;
+
+}
+
+.language-selector .list-view .list-cell:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+}
+
+.language-selector .list-view .list-cell:selected {
+    -fx-background-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Hover */
+.language-selector:hover {
+    -fx-border-color: #6E68A5;
+}
+
+/* Dropdown arrow button */
+.language-selector .arrow-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0 6 0 6;
+}
+
+/* Custom arrow icon */
+.language-selector .arrow-button .arrow {
+    -fx-shape: "M0,0 L6,0 L3,4 Z";
+    /* ▼ triangle */
+    -fx-background-color: white;
+    /* arrow color */
+    -fx-scale-x: 1.2;
+    -fx-scale-y: 1.2;
+}
+
+.section-heading-styles {
+    -fx-font-size: 20px;
+    -fx-font-weight: 700;
+    -fx-text-fill: black;
+    -fx-letter-spacing: 0.05em;
+    -fx-padding: 0 0 4 0;
+    -fx-opacity: 0.75;
+}
+
+.section-heading-sequences {
+    -fx-font-size: 20px;
+    -fx-font-weight: 700;
+    -fx-text-fill: black;
+    -fx-letter-spacing: 0.05em;
+    -fx-padding: 0 0 3 -50;
+    -fx-opacity: 0.75;
+}
