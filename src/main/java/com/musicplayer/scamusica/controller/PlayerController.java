@@ -54,6 +54,8 @@ public class PlayerController extends Application {
 
     private MediaPlayer vlcPlayer;
     private AudioPlayerComponent vlcPlayerComponent;
+    private AudioCallbackHandler audioCallbackHandler = null;
+    private LedVuMeter ledVuMeter = null;
     private boolean vlcHandlersAttached = false;
     private boolean userPaused = false;
 
@@ -85,6 +87,7 @@ public class PlayerController extends Application {
     private volatile boolean isFirstTrackStarted = false;
 
     private ImageView albumImageView;
+    private String currentAlbumImgUrl = null;
 
     private final List<String> tempPlaylist = Arrays.asList(
             "Secuencias-Estilos-playlist",
@@ -117,6 +120,7 @@ public class PlayerController extends Application {
 
         // === NETWORK MONITOR START ===
         NetworkMonitor.getInstance().start();
+        HeartbeatService.getInstance().start();
         AppLogger.log("[APP] Player started");
 
         String appDir = System.getProperty("user.dir");
@@ -127,6 +131,16 @@ public class PlayerController extends Application {
 
         vlcPlayerComponent = new AudioPlayerComponent();
         vlcPlayer = vlcPlayerComponent.mediaPlayer();
+
+        try {
+            audioCallbackHandler = new AudioCallbackHandler();
+            vlcPlayer.audio().callback("S16N", 44100, 2, audioCallbackHandler);
+            AppLogger.log("[PLAYER] Custom audio callback registered for LED visualizer");
+        } catch (Exception e) {
+            e.printStackTrace();
+            AppLogger.log("[PLAYER] Failed to initialize JavaSound for audio callback, falling back to native LibVLC audio");
+            audioCallbackHandler = null;
+        }
 
         initializeAdSystem();
 
@@ -141,6 +155,9 @@ public class PlayerController extends Application {
                     vlcPlayer.controls().stop();
                 } catch (Exception ignored) {
                 }
+            }
+            if (audioCallbackHandler != null) {
+                audioCallbackHandler.close();
             }
             if (queueWorkerThread != null) {
                 queueWorkerThread.interrupt();
@@ -160,6 +177,7 @@ public class PlayerController extends Application {
                 } catch (Exception ignored) {
                 }
             }
+            HeartbeatService.getInstance().stop();
         });
         VBox sidebar = sidebarUtil.createSidebar(sidebarTop, settingsIcon);
 
@@ -248,7 +266,15 @@ public class PlayerController extends Application {
 
         Label leftTime = controlsUtil.createTimeLabel(false);
         Label rightTime = controlsUtil.createTimeLabel(true);
-        HBox timesRow = controlsUtil.createTimesRow(leftTime, rightTime);
+        
+        ledVuMeter = new LedVuMeter();
+        ledVuMeter.setAudioCallbackHandler(audioCallbackHandler);
+        ledVuMeter.start();
+        
+        HBox vuMeterContainer = new HBox(ledVuMeter);
+        vuMeterContainer.getStyleClass().add("vu-meter-container");
+        
+        HBox timesRow = controlsUtil.createTimesRow(leftTime, rightTime, vuMeterContainer);
         HBox progressRow = controlsUtil.createProgressRow(progressSlider);
         VBox sliderContainer = controlsUtil.createSliderContainer(titleCentered, timesRow, progressRow);
         HBox controlsWrapper = controlsUtil.createControls(progressSlider, playlistPill);
@@ -355,6 +381,10 @@ public class PlayerController extends Application {
                 }
             }
 
+            if (audioCallbackHandler != null) {
+                audioCallbackHandler.close();
+            }
+
             if (downloadManager != null) {
                 try {
                     downloadManager.stop();
@@ -370,6 +400,7 @@ public class PlayerController extends Application {
             }
 
             NetworkMonitor.getInstance().stop();
+            HeartbeatService.getInstance().stop();
             Platform.exit();
 
             System.exit(0);
@@ -386,10 +417,16 @@ public class PlayerController extends Application {
             double savedVolume = prefs.getDouble(PREF_VOLUME, 85.0);
             volumeSlider.setValue(savedVolume);
             vlcPlayer.audio().setVolume((int) savedVolume);
+            if (audioCallbackHandler != null) {
+                audioCallbackHandler.setVolume((int) savedVolume);
+            }
 
             volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
                 prefs.putDouble(PREF_VOLUME, newVal.doubleValue());
                 vlcPlayer.audio().setVolume(newVal.intValue());
+                if (audioCallbackHandler != null) {
+                    audioCallbackHandler.setVolume(newVal.intValue());
+                }
             });
 
             progressSlider.setOnMouseReleased(e -> {
@@ -1024,19 +1061,6 @@ public class PlayerController extends Application {
 
         stopPlayback(progressSlider, leftTime, rightTime, controlsWrapper, downloadLabel);
 
-        if (!playQueue.isEmpty() && albumImageView != null) {
-            String firstImgUrl = playQueue.get(0).getAlbumImageUrl();
-            if (firstImgUrl != null && !firstImgUrl.trim().isEmpty()) {
-                Platform.runLater(() -> {
-                    try {
-                        albumImageView.setImage(null);
-                        albumImageView.setImage(new Image(firstImgUrl, 400, 400, true, true, true));
-                    } catch (Exception ignored) {
-                    }
-                });
-            }
-        }
-
         playQueue.clear();
         currentTrackIndex = 0;
         isFirstTrackStarted = false;
@@ -1099,12 +1123,20 @@ public class PlayerController extends Application {
             if (!playQueue.isEmpty() && albumImageView != null) {
                 String firstImgUrl = playQueue.get(0).getAlbumImageUrl();
                 if (firstImgUrl != null && !firstImgUrl.trim().isEmpty()) {
+                    if (!firstImgUrl.equals(currentAlbumImgUrl)) {
+                        Platform.runLater(() -> {
+                            try {
+                                albumImageView.setImage(null);
+                                albumImageView.setImage(new Image(firstImgUrl, 400, 400, true, true, true));
+                                currentAlbumImgUrl = firstImgUrl;
+                            } catch (Exception ignored) {
+                            }
+                        });
+                    }
+                } else {
                     Platform.runLater(() -> {
-                        try {
-                            albumImageView.setImage(null);
-                            albumImageView.setImage(new Image(firstImgUrl, 400, 400, true, true, true));
-                        } catch (Exception ignored) {
-                        }
+                        albumImageView.setImage(null);
+                        currentAlbumImgUrl = null;
                     });
                 }
             }
@@ -1418,14 +1450,20 @@ public class PlayerController extends Application {
         // }
 
         if (albumImageView != null) {
-            albumImageView.setImage(null);
             String albumImgUrl = track.getAlbumImageUrl();
             if (albumImgUrl != null && !albumImgUrl.trim().isEmpty()) {
-                try {
-                    albumImageView.setImage(new Image(albumImgUrl, 400, 400, true, true, true));
-                } catch (Exception ex) {
-                    ex.printStackTrace();
+                if (!albumImgUrl.equals(currentAlbumImgUrl)) {
+                    try {
+                        albumImageView.setImage(null);
+                        albumImageView.setImage(new Image(albumImgUrl, 400, 400, true, true, true));
+                        currentAlbumImgUrl = albumImgUrl;
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
                 }
+            } else {
+                albumImageView.setImage(null);
+                currentAlbumImgUrl = null;
             }
         }
 
@@ -1592,6 +1630,9 @@ public class PlayerController extends Application {
 
             @Override
             public void playing(MediaPlayer mediaPlayer) {
+                if (audioCallbackHandler != null) {
+                    audioCallbackHandler.resumeLine();
+                }
                 Platform.runLater(() -> {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {
@@ -1602,6 +1643,9 @@ public class PlayerController extends Application {
 
             @Override
             public void paused(MediaPlayer mediaPlayer) {
+                if (audioCallbackHandler != null) {
+                    audioCallbackHandler.pauseLine();
+                }
                 Platform.runLater(() -> {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {
@@ -1612,6 +1656,10 @@ public class PlayerController extends Application {
 
             @Override
             public void stopped(MediaPlayer mediaPlayer) {
+                if (audioCallbackHandler != null) {
+                    audioCallbackHandler.pauseLine();
+                    audioCallbackHandler.flushLine();
+                }
                 Platform.runLater(() -> {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {

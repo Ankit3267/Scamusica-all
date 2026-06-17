@@ -404,8 +404,6 @@ public class PlaylistApiService {
 
         String albumImgPath = albumImg;
 
-        AppLogger.log("[TRACK] album_img from style = " + albumImgPath);
-
         String fullAlbumImgUrl = null;
         if (albumImgPath != null && !albumImgPath.trim().isEmpty()) {
             if (albumImgPath.startsWith("http://") || albumImgPath.startsWith("https://")) {
@@ -414,7 +412,6 @@ public class PlaylistApiService {
                 fullAlbumImgUrl = Utility.BASE_URL.get()
                         + "/"
                         + albumImgPath.replaceFirst("^/", "");
-                AppLogger.log("FINAL IMAGE URL = " + fullAlbumImgUrl);
             }
         }
 

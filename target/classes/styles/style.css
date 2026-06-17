@@ -418,3 +418,13 @@
     -fx-padding: 0 0 3 -50;
     -fx-opacity: 0.75;
 }
+
+.vu-meter-container {
+    -fx-background-color: rgba(0, 0, 0, 0.06);
+    -fx-border-color: rgba(0, 0, 0, 0.09);
+    -fx-border-width: 1;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 3 6;
+    -fx-alignment: center;
+}

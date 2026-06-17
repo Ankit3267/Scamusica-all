@@ -45,6 +45,17 @@ public class PlayerControls {
         return timesRow;
     }
 
+    public HBox createTimesRow(Label leftTime, Label rightTime, Node visualizer) {
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox rightContainer = new HBox(12, visualizer, rightTime);
+        rightContainer.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        HBox timesRow = new HBox(leftTime, spacer, rightContainer);
+        timesRow.setAlignment(javafx.geometry.Pos.CENTER);
+        timesRow.setPadding(new Insets(0, 12, 6, 12));
+        return timesRow;
+    }
+
     public HBox createProgressRow(Slider progressSlider) {
         HBox progressRow = new HBox(progressSlider);
         progressRow.setAlignment(javafx.geometry.Pos.CENTER);
