@@ -1507,6 +1507,19 @@ public class PlayerController extends Application {
             AppLogger.log("Encrypted file path: " + encryptedFile.getAbsolutePath());
             AppLogger.log("File exists: " + encryptedFile.exists());
 
+
+            if (!encryptedFile.exists() && !NetworkMonitor.getInstance().isOnline()) {
+                AppLogger.log("[PLAYER] Offline and file doesn't exist for song-" + track.getId() + ", skipping to next.");
+                Platform.runLater(() -> {
+                    try {
+                        playNextTrack(albumHeading, titleLabel, progressSlider,
+                                leftTime, rightTime, controlsWrapper, bottomBar, downloadLabel);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                });
+                return;
+            }
             if (encryptedFile.exists()) {
                 AppLogger.log("[PLAYER] Playing from local file: " + encryptedFile.getAbsolutePath());
                 final String fallbackUrl = safeUrl;
