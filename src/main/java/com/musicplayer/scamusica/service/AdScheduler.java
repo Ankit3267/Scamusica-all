@@ -31,7 +31,6 @@ public class AdScheduler {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final ZoneId SYSTEM_ZONE = ZoneId.systemDefault();
 
-    // Class fields mein add karo:
     private final Map<Integer, LocalTime> lastPlayedTime = new ConcurrentHashMap<>();
 
     public AdScheduler(List<Ad> ads, AdScheduleListener listener) {
@@ -46,11 +45,14 @@ public class AdScheduler {
         }
 
         running = true;
-        scheduler = Executors.newScheduledThreadPool(1);
+        scheduler = Executors.newScheduledThreadPool(1, r -> {
+            Thread t = new Thread(r, "AdScheduler");
+            t.setDaemon(true);
+            return t;
+        });
 
         AppLogger.log("[AdScheduler] Starting with " + allAds.size() + " ads");
 
-        // Check every minute for schedule changes
         scheduler.scheduleAtFixedRate(
                 this::checkAndTriggerAds,
                 0,
@@ -72,6 +74,13 @@ public class AdScheduler {
             allAds.clear();
             if (newAds != null) {
                 allAds.addAll(newAds);
+                Set<Integer> validIds = newAds.stream()
+                        .filter(ad -> ad.getId() != null)
+                        .map(Ad::getId)
+                        .collect(java.util.stream.Collectors.toSet());
+                lastPlayedTime.keySet().retainAll(validIds);
+            } else {
+                lastPlayedTime.clear();
             }
         }
         AppLogger.log("[AdScheduler] Updated with " + allAds.size() + " ads");
@@ -98,11 +107,11 @@ public class AdScheduler {
         synchronized (allAds) {
             for (Ad ad : allAds) {
                 if (!isAdActive(ad, today)) {
-                    continue; // Date range check failed
+                    continue;
                 }
 
                 if (!isAdDayActive(ad, today)) {
-                    continue; // Not an active day
+                    continue;
                 }
 
                 if (shouldPlayNow(ad, currentTime)) {
@@ -135,7 +144,7 @@ public class AdScheduler {
             return false;
         }
 
-        String dayName = date.getDayOfWeek().toString(); // "MONDAY", "TUESDAY", etc
+        String dayName = date.getDayOfWeek().toString();
         return activeDays.stream()
                 .anyMatch(day -> day.toUpperCase().equals(dayName));
     }
@@ -150,20 +159,18 @@ public class AdScheduler {
     }
 
     private boolean shouldPlayCustom(Ad ad, LocalTime currentTime) {
-        Object playTimesObj = ad.getPlayTimes();     // ✅ Object le lo
-        if (!(playTimesObj instanceof List)) {       // ✅ Check if it's actually List
+        Object playTimesObj = ad.getPlayTimes();
+        if (!(playTimesObj instanceof List)) {
             return false;
         }
         @SuppressWarnings("unchecked")
-        List<String> playTimes = (List<String>) playTimesObj;  // ✅ Safe cast
+        List<String> playTimes = (List<String>) playTimesObj;
 
         if (playTimes == null || playTimes.isEmpty()) {
             return false;
         }
 
-        // playTimes = ["16:15", "19:20"]
-        // Check if current minute matches any scheduled time (within 1 min tolerance)
-        String currentMinute = currentTime.format(TIME_FORMATTER); // "16:15"
+        String currentMinute = currentTime.format(TIME_FORMATTER);
 
         for (String scheduledTime : playTimes) {
             try {
@@ -192,8 +199,6 @@ public class AdScheduler {
     }
 
     private boolean shouldPlayInterval(Ad ad, LocalTime currentTime) {
-        // playTimes = 30 (minutes)
-        // Check if current minute is divisible by interval
         Object playTimesObj = ad.getPlayTimes();
         if (playTimesObj == null) {
             return false;
@@ -212,17 +217,14 @@ public class AdScheduler {
             return false;
         }
 
-        // ✅ Last played time check karo
         LocalTime lastPlayed = lastPlayedTime.get(ad.getId());
         if (lastPlayed == null) {
-            // Pehli baar — interval check karo
             int totalMinutes = currentTime.getHour() * 60 + currentTime.getMinute();
             boolean due = totalMinutes % intervalMinutes == 0;
             if (due) lastPlayedTime.put(ad.getId(), currentTime);
             return due;
         }
 
-        // ✅ Last played ke baad se enough time gaya?
         long minutesSinceLast = Duration.between(lastPlayed, currentTime).toMinutes();
         if (minutesSinceLast < 0) minutesSinceLast += 24 * 60; // midnight crossover handle
 
@@ -237,7 +239,6 @@ public class AdScheduler {
         }
 
         try {
-            // Expect "2026-05-09" format
             return LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE);
         } catch (Exception e) {
             AppLogger.log("[AdScheduler] Failed to parse date: " + dateStr);

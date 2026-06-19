@@ -11,9 +11,19 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 public class AdDownloadManager {
 
     private static final String AD_DIR_NAME = ".scamusica" + File.separator + "ads";
+
+    private static final ExecutorService executor = Executors.newFixedThreadPool(3, r -> {
+        Thread t = new Thread(r, "AdDownloadManager-Thread");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        return t;
+    });
 
     public static File getAdDir() {
         File dir = new File(System.getProperty("user.home") + File.separator + AD_DIR_NAME);
@@ -71,7 +81,7 @@ public class AdDownloadManager {
 
         final String finalUrl = downloadUrl;
 
-        Thread t = new Thread(() -> {
+        executor.submit(() -> {
             try {
                 File outFile = getLocalAdFile(adAudio);
                 AppLogger.log("[AdDownload] Downloading ad-audio-" + adAudio.getId() + " from: " + finalUrl);
@@ -105,9 +115,6 @@ public class AdDownloadManager {
                 AppLogger.log("[AdDownload] Error downloading ad-audio-" + adAudio.getId() + ": " + e.getMessage());
             }
         });
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY);
-        t.start();
     }
 
     public static void downloadAllAds(List<Ad> ads) {

@@ -54,8 +54,6 @@ public class PlayerController extends Application {
 
     private MediaPlayer vlcPlayer;
     private AudioPlayerComponent vlcPlayerComponent;
-    private AudioCallbackHandler audioCallbackHandler = null;
-    private LedVuMeter ledVuMeter = null;
     private boolean vlcHandlersAttached = false;
     private boolean userPaused = false;
 
@@ -104,10 +102,17 @@ public class PlayerController extends Application {
 
     private volatile int currentGenreTotalFiles = 0;
     private final AtomicInteger currentGenreDownloadedCount = new AtomicInteger(0);
+
+    private final PlaylistApiService apiService = new PlaylistApiService();
     private volatile double currentFileProgressFraction = 0.0;
 
     private ScheduledExecutorService schedular;
     private BlockingQueue<Runnable> operationQueue = new LinkedBlockingQueue<>();
+    private java.util.concurrent.ExecutorService asyncExecutor = java.util.concurrent.Executors.newFixedThreadPool(4, r -> {
+        Thread t = new Thread(r, "AsyncExecutor-Thread");
+        t.setDaemon(true);
+        return t;
+    });
     private volatile boolean running = true;
     private List<Integer> lastServerIds = new ArrayList<>();
 
@@ -118,10 +123,31 @@ public class PlayerController extends Application {
     @Override
     public void start(Stage primaryStage) {
 
+        AppLogger.init();
+        // === TEMP CLEANUP ===
+        try {
+            File tempDir = new File(System.getProperty("user.home")
+                    + File.separator + ".scamusica"
+                    + File.separator + "temp");
+            if (tempDir.exists() && tempDir.isDirectory()) {
+                File[] files = tempDir.listFiles();
+                if (files != null) {
+                    for (File f : files) {
+                        if (f.getName().startsWith("play_") && f.getName().endsWith(".mp3")) {
+                            f.delete();
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
         // === NETWORK MONITOR START ===
         NetworkMonitor.getInstance().start();
-        HeartbeatService.getInstance().start();
         AppLogger.log("[APP] Player started");
+
+        // Start memory watchdog
+//        MemoryWatchdog.getInstance().start();
 
         String appDir = System.getProperty("user.dir");
 
@@ -131,16 +157,6 @@ public class PlayerController extends Application {
 
         vlcPlayerComponent = new AudioPlayerComponent();
         vlcPlayer = vlcPlayerComponent.mediaPlayer();
-
-        try {
-            audioCallbackHandler = new AudioCallbackHandler();
-            vlcPlayer.audio().callback("S16N", 44100, 2, audioCallbackHandler);
-            AppLogger.log("[PLAYER] Custom audio callback registered for LED visualizer");
-        } catch (Exception e) {
-            e.printStackTrace();
-            AppLogger.log("[PLAYER] Failed to initialize JavaSound for audio callback, falling back to native LibVLC audio");
-            audioCallbackHandler = null;
-        }
 
         initializeAdSystem();
 
@@ -155,9 +171,6 @@ public class PlayerController extends Application {
                     vlcPlayer.controls().stop();
                 } catch (Exception ignored) {
                 }
-            }
-            if (audioCallbackHandler != null) {
-                audioCallbackHandler.close();
             }
             if (queueWorkerThread != null) {
                 queueWorkerThread.interrupt();
@@ -177,7 +190,10 @@ public class PlayerController extends Application {
                 } catch (Exception ignored) {
                 }
             }
-            HeartbeatService.getInstance().stop();
+            if (asyncExecutor != null) {
+                asyncExecutor.shutdownNow();
+            }
+//            MemoryWatchdog.getInstance().stop();
         });
         VBox sidebar = sidebarUtil.createSidebar(sidebarTop, settingsIcon);
 
@@ -205,6 +221,16 @@ public class PlayerController extends Application {
 
         VBox leftAlbumVBox = albumUtil.createLeftAlbumVBox(albumHeading, img, songsBox);
         leftAlbumVBox.getChildren().add(0, currentStyleLabel);
+
+//        MemoryWatchdog.getInstance().registerCleanupCallback(() -> {
+//            // Hint to JVM that large image buffers can be collected
+//            Platform.runLater(() -> {
+//                if (albumImageView != null && albumImageView.getImage() != null) {
+//                    albumImageView.getImage().cancel();
+//                }
+//            });
+//        });
+
         recomputeGlobalCountAndUpdateUI();
 
         List<String> tempList;
@@ -266,15 +292,7 @@ public class PlayerController extends Application {
 
         Label leftTime = controlsUtil.createTimeLabel(false);
         Label rightTime = controlsUtil.createTimeLabel(true);
-        
-        ledVuMeter = new LedVuMeter();
-        ledVuMeter.setAudioCallbackHandler(audioCallbackHandler);
-        ledVuMeter.start();
-        
-        HBox vuMeterContainer = new HBox(ledVuMeter);
-        vuMeterContainer.getStyleClass().add("vu-meter-container");
-        
-        HBox timesRow = controlsUtil.createTimesRow(leftTime, rightTime, vuMeterContainer);
+        HBox timesRow = controlsUtil.createTimesRow(leftTime, rightTime);
         HBox progressRow = controlsUtil.createProgressRow(progressSlider);
         VBox sliderContainer = controlsUtil.createSliderContainer(titleCentered, timesRow, progressRow);
         HBox controlsWrapper = controlsUtil.createControls(progressSlider, playlistPill);
@@ -381,10 +399,6 @@ public class PlayerController extends Application {
                 }
             }
 
-            if (audioCallbackHandler != null) {
-                audioCallbackHandler.close();
-            }
-
             if (downloadManager != null) {
                 try {
                     downloadManager.stop();
@@ -400,7 +414,7 @@ public class PlayerController extends Application {
             }
 
             NetworkMonitor.getInstance().stop();
-            HeartbeatService.getInstance().stop();
+//            MemoryWatchdog.getInstance().stop();
             Platform.exit();
 
             System.exit(0);
@@ -417,16 +431,10 @@ public class PlayerController extends Application {
             double savedVolume = prefs.getDouble(PREF_VOLUME, 85.0);
             volumeSlider.setValue(savedVolume);
             vlcPlayer.audio().setVolume((int) savedVolume);
-            if (audioCallbackHandler != null) {
-                audioCallbackHandler.setVolume((int) savedVolume);
-            }
 
             volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
                 prefs.putDouble(PREF_VOLUME, newVal.doubleValue());
                 vlcPlayer.audio().setVolume(newVal.intValue());
-                if (audioCallbackHandler != null) {
-                    audioCallbackHandler.setVolume(newVal.intValue());
-                }
             });
 
             progressSlider.setOnMouseReleased(e -> {
@@ -519,7 +527,11 @@ public class PlayerController extends Application {
         queueWorkerThread.start();
 
         // 🔥 START SCHEDULER
-        schedular = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        schedular = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "SyncScheduler");
+            t.setDaemon(true);
+            return t;
+        });
 
         schedular.scheduleAtFixedRate(() -> {
             operationQueue.add(() -> {
@@ -545,13 +557,11 @@ public class PlayerController extends Application {
         }
 
         try {
-            PlaylistApiService api = new PlaylistApiService();
-
             String currentPlaylist = currentPlaylistName;
             if (currentPlaylist == null)
                 return;
 
-            List<PlaylistTrack> serverTracks = api.fetchTracksForGenre(currentPlaylist);
+            List<PlaylistTrack> serverTracks = apiService.fetchTracksForGenre(currentPlaylist);
             AppLogger.log("[SYNC] Server tracks count: " + serverTracks.size());
 
             if (serverTracks == null)
@@ -631,8 +641,7 @@ public class PlayerController extends Application {
                 syncAdsFromServer();
                 // ✅ Playlist titles sync
                 try {
-                    PlaylistApiService api2 = new PlaylistApiService();
-                    List<String> serverTitles = api2.fetchPlaylistTitles();
+                    List<String> serverTitles = apiService.fetchPlaylistTitles();
 
                     if (serverTitles != null && !serverTitles.isEmpty()) {
                         Platform.runLater(() -> {
@@ -765,52 +774,70 @@ public class PlayerController extends Application {
                             if (encryptedFile.exists()) {
                                 AppLogger
                                         .log("[AdPlayer] Resuming from local file: " + encryptedFile.getAbsolutePath());
-                                new Thread(() -> {
+                                asyncExecutor.submit(() -> {
                                     try {
-                                        if (currentTempFile != null && currentTempFile.exists()) {
-                                            currentTempFile.delete();
-                                        }
                                         File tempFile = decryptToTemp(encryptedFile);
-                                        currentTempFile = tempFile;
+                                        synchronized (PlayerController.this) {
+                                            if (currentTempFile != null && currentTempFile.exists()) {
+                                                currentTempFile.delete();
+                                            }
+                                            currentTempFile = tempFile;
+                                        }
                                         Platform.runLater(() -> {
                                             int originalVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
                                             long savedTime = adPlayer.getSavedSongTime();
                                             String startTimeOpt = ":start-time=" + (savedTime / 1000.0f);
 
                                             vlcPlayer.audio().setVolume(0);
-                                            new Thread(() -> {
+                                            asyncExecutor.submit(() -> {
                                                 try {
                                                     for (int i = 0; i < 50; i++) {
-                                                        vlcPlayer.audio().setVolume(0);
+                                                        Platform.runLater(() -> {
+                                                            try {
+                                                                vlcPlayer.audio().setVolume(0);
+                                                            } catch (Exception ex) {}
+                                                        });
                                                         Thread.sleep(30);
                                                     }
                                                 } catch (Exception e) {
                                                 }
-                                            }).start();
+                                            });
 
                                             vlcPlayer.media().play(tempFile.getAbsolutePath(), startTimeOpt);
                                             vlcPlayer.audio().setVolume(0);
 
                                             schedular.schedule(() -> {
-                                                new Thread(() -> {
+                                                asyncExecutor.submit(() -> {
                                                     try {
-                                                        vlcPlayer.audio().setVolume(0);
+                                                        Platform.runLater(() -> {
+                                                            try {
+                                                                vlcPlayer.audio().setVolume(0);
+                                                            } catch (Exception ex) {}
+                                                        });
                                                         int steps = 20;
                                                         for (int i = 1; i <= steps; i++) {
                                                             int currentVol = (int) (originalVol * ((double) i / steps));
-                                                            vlcPlayer.audio().setVolume(currentVol);
+                                                            Platform.runLater(() -> {
+                                                                try {
+                                                                    vlcPlayer.audio().setVolume(currentVol);
+                                                                } catch (Exception ex) {}
+                                                            });
                                                             Thread.sleep(100);
                                                         }
-                                                        vlcPlayer.audio().setVolume(originalVol);
+                                                        Platform.runLater(() -> {
+                                                            try {
+                                                                vlcPlayer.audio().setVolume(originalVol);
+                                                            } catch (Exception ex) {}
+                                                        });
                                                     } catch (Exception e) {
                                                     }
-                                                }).start();
+                                                });
                                             }, 1500, TimeUnit.MILLISECONDS);
                                         });
                                     } catch (Exception e) {
                                         e.printStackTrace();
                                     }
-                                }).start();
+                                });
                             } else if (NetworkMonitor.getInstance().isOnline()) {
                                 AppLogger.log("[AdPlayer] Resuming from URL: " + track.getUrl());
                                 int originalVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
@@ -818,33 +845,49 @@ public class PlayerController extends Application {
                                 String startTimeOpt = ":start-time=" + (savedTime / 1000.0f);
 
                                 vlcPlayer.audio().setVolume(0);
-                                new Thread(() -> {
+                                asyncExecutor.submit(() -> {
                                     try {
                                         for (int i = 0; i < 50; i++) {
-                                            vlcPlayer.audio().setVolume(0);
+                                            Platform.runLater(() -> {
+                                                try {
+                                                    vlcPlayer.audio().setVolume(0);
+                                                } catch (Exception ex) {}
+                                            });
                                             Thread.sleep(30);
                                         }
                                     } catch (Exception e) {
                                     }
-                                }).start();
+                                });
 
                                 vlcPlayer.media().play(encodeMediaUrl(track.getUrl()), startTimeOpt);
                                 vlcPlayer.audio().setVolume(0);
 
                                 schedular.schedule(() -> {
-                                    new Thread(() -> {
+                                    asyncExecutor.submit(() -> {
                                         try {
-                                            vlcPlayer.audio().setVolume(0);
+                                            Platform.runLater(() -> {
+                                                try {
+                                                    vlcPlayer.audio().setVolume(0);
+                                                } catch (Exception ex) {}
+                                            });
                                             int steps = 20;
                                             for (int i = 1; i <= steps; i++) {
                                                 int currentVol = (int) (originalVol * ((double) i / steps));
-                                                vlcPlayer.audio().setVolume(currentVol);
+                                                Platform.runLater(() -> {
+                                                    try {
+                                                        vlcPlayer.audio().setVolume(currentVol);
+                                                    } catch (Exception ex) {}
+                                                });
                                                 Thread.sleep(100);
                                             }
-                                            vlcPlayer.audio().setVolume(originalVol);
+                                            Platform.runLater(() -> {
+                                                try {
+                                                    vlcPlayer.audio().setVolume(originalVol);
+                                                } catch (Exception ex) {}
+                                            });
                                         } catch (Exception e) {
                                         }
-                                    }).start();
+                                    });
                                 }, 1500, TimeUnit.MILLISECONDS);
                             } else {
                                 AppLogger.log("[AdPlayer] Cannot resume — offline and no local file. Playing next.");
@@ -1049,15 +1092,15 @@ public class PlayerController extends Application {
     }
 
     private void loadPlaylistAndStart(String playlistName,
-            Label albumHeading,
-            Label titleLabel,
-            Slider progressSlider,
-            Label leftTime,
-            Label rightTime,
-            HBox controlsWrapper,
-            HBox bottomBar,
-            Label downloadLabel,
-            boolean autoPlay) throws URISyntaxException {
+                                      Label albumHeading,
+                                      Label titleLabel,
+                                      Slider progressSlider,
+                                      Label leftTime,
+                                      Label rightTime,
+                                      HBox controlsWrapper,
+                                      HBox bottomBar,
+                                      Label downloadLabel,
+                                      boolean autoPlay) throws URISyntaxException {
 
         stopPlayback(progressSlider, leftTime, rightTime, controlsWrapper, downloadLabel);
 
@@ -1124,20 +1167,19 @@ public class PlayerController extends Application {
                 String firstImgUrl = playQueue.get(0).getAlbumImageUrl();
                 if (firstImgUrl != null && !firstImgUrl.trim().isEmpty()) {
                     if (!firstImgUrl.equals(currentAlbumImgUrl)) {
-                        Platform.runLater(() -> {
+                        currentAlbumImgUrl = firstImgUrl;
+                        Platform.runLater(() -> albumImageView.setImage(null));
+                        asyncExecutor.submit(() -> {
                             try {
-                                albumImageView.setImage(null);
-                                albumImageView.setImage(new Image(firstImgUrl, 400, 400, true, true, true));
-                                currentAlbumImgUrl = firstImgUrl;
+                                Image image = com.musicplayer.scamusica.util.ImageCache.getImage(firstImgUrl);
+                                Platform.runLater(() -> albumImageView.setImage(image));
                             } catch (Exception ignored) {
                             }
                         });
                     }
                 } else {
-                    Platform.runLater(() -> {
-                        albumImageView.setImage(null);
-                        currentAlbumImgUrl = null;
-                    });
+                    currentAlbumImgUrl = null;
+                    Platform.runLater(() -> albumImageView.setImage(null));
                 }
             }
 
@@ -1393,7 +1435,7 @@ public class PlayerController extends Application {
         }
 
         final String text = String.format("%.0f%% %s (%d/%d)", percent, LanguageManager.createStringBinding("label" +
-                ".download").get(),
+                        ".download").get(),
                 currentGenreDownloadedCount.get(), currentGenreTotalFiles);
 
         boolean isDone = (currentGenreDownloadedCount.get() == currentGenreTotalFiles
@@ -1415,14 +1457,14 @@ public class PlayerController extends Application {
     }
 
     private void playTrack(Label albumHeading,
-            Label titleLabel,
-            Slider progressSlider,
-            Label leftTime,
-            Label rightTime,
-            HBox controlsWrapper,
-            HBox bottomBar,
-            Label downloadLabel,
-            boolean autoPlay) throws URISyntaxException {
+                           Label titleLabel,
+                           Slider progressSlider,
+                           Label leftTime,
+                           Label rightTime,
+                           HBox controlsWrapper,
+                           HBox bottomBar,
+                           Label downloadLabel,
+                           boolean autoPlay) throws URISyntaxException {
 
         if (playQueue.isEmpty())
             return;
@@ -1453,17 +1495,20 @@ public class PlayerController extends Application {
             String albumImgUrl = track.getAlbumImageUrl();
             if (albumImgUrl != null && !albumImgUrl.trim().isEmpty()) {
                 if (!albumImgUrl.equals(currentAlbumImgUrl)) {
-                    try {
-                        albumImageView.setImage(null);
-                        albumImageView.setImage(new Image(albumImgUrl, 400, 400, true, true, true));
-                        currentAlbumImgUrl = albumImgUrl;
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                    }
+                    currentAlbumImgUrl = albumImgUrl;
+                    albumImageView.setImage(null);
+                    asyncExecutor.submit(() -> {
+                        try {
+                            Image image = com.musicplayer.scamusica.util.ImageCache.getImage(albumImgUrl);
+                            Platform.runLater(() -> albumImageView.setImage(image));
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
+                    });
                 }
             } else {
-                albumImageView.setImage(null);
                 currentAlbumImgUrl = null;
+                albumImageView.setImage(null);
             }
         }
 
@@ -1519,16 +1564,21 @@ public class PlayerController extends Application {
                 });
                 return;
             }
+
             if (encryptedFile.exists()) {
                 AppLogger.log("[PLAYER] Playing from local file: " + encryptedFile.getAbsolutePath());
                 final String fallbackUrl = safeUrl;
-                Thread decryptThread = new Thread(() -> {
+                asyncExecutor.submit(() -> {
+                    int originalPriority = Thread.currentThread().getPriority();
+                    Thread.currentThread().setPriority(Thread.MAX_PRIORITY);
                     try {
-                        if (currentTempFile != null && currentTempFile.exists()) {
-                            currentTempFile.delete();
-                        }
                         File tempFile = decryptToTemp(encryptedFile);
-                        currentTempFile = tempFile;
+                        synchronized (PlayerController.this) {
+                            if (currentTempFile != null && currentTempFile.exists()) {
+                                currentTempFile.delete();
+                            }
+                            currentTempFile = tempFile;
+                        }
                         String localUrl = tempFile.toURI().toString();
 
                         if (!localUrl.contains(".mp3")) {
@@ -1585,11 +1635,10 @@ public class PlayerController extends Application {
                                 }
                             });
                         }
+                    } finally {
+                        Thread.currentThread().setPriority(originalPriority);
                     }
                 });
-                decryptThread.setDaemon(true);
-                decryptThread.setPriority(Thread.MAX_PRIORITY);
-                decryptThread.start();
 
                 return;
             }
@@ -1631,20 +1680,13 @@ public class PlayerController extends Application {
             boolean autoPlay) {
 
         if (currentVlcListener != null) {
-            try {
-                vlcPlayer.events().removeMediaPlayerEventListener(currentVlcListener);
-            } catch (Exception ignored) {
-            }
-            currentVlcListener = null;
+            return;
         }
 
         currentVlcListener = new MediaPlayerEventAdapter() {
 
             @Override
             public void playing(MediaPlayer mediaPlayer) {
-                if (audioCallbackHandler != null) {
-                    audioCallbackHandler.resumeLine();
-                }
                 Platform.runLater(() -> {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {
@@ -1655,9 +1697,6 @@ public class PlayerController extends Application {
 
             @Override
             public void paused(MediaPlayer mediaPlayer) {
-                if (audioCallbackHandler != null) {
-                    audioCallbackHandler.pauseLine();
-                }
                 Platform.runLater(() -> {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {
@@ -1668,10 +1707,6 @@ public class PlayerController extends Application {
 
             @Override
             public void stopped(MediaPlayer mediaPlayer) {
-                if (audioCallbackHandler != null) {
-                    audioCallbackHandler.pauseLine();
-                    audioCallbackHandler.flushLine();
-                }
                 Platform.runLater(() -> {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {
@@ -1707,14 +1742,16 @@ public class PlayerController extends Application {
                     return;
                 }
 
-                if (currentTempFile != null) {
-                    try {
-                        if (currentTempFile.exists())
-                            currentTempFile.delete();
-                        AppLogger.log("[TEMP] Deleted on finish: " + currentTempFile.getName());
-                    } catch (Exception ignored) {
+                synchronized (PlayerController.this) {
+                    if (currentTempFile != null) {
+                        try {
+                            if (currentTempFile.exists())
+                                currentTempFile.delete();
+                            AppLogger.log("[TEMP] Deleted on finish: " + currentTempFile.getName());
+                        } catch (Exception ignored) {
+                        }
+                        currentTempFile = null;
                     }
-                    currentTempFile = null;
                 }
 
                 Platform.runLater(() -> {
@@ -1742,13 +1779,13 @@ public class PlayerController extends Application {
     }
 
     private void playNextTrack(Label albumHeading,
-            Label titleLabel,
-            Slider progressSlider,
-            Label leftTime,
-            Label rightTime,
-            HBox controlsWrapper,
-            HBox bottomBar,
-            Label downloadLabel) throws URISyntaxException {
+                               Label titleLabel,
+                               Slider progressSlider,
+                               Label leftTime,
+                               Label rightTime,
+                               HBox controlsWrapper,
+                               HBox bottomBar,
+                               Label downloadLabel) throws URISyntaxException {
 
         currentTrackIndex++;
         AppLogger.log("[PLAYER] Next track index: " + currentTrackIndex);
@@ -1771,13 +1808,13 @@ public class PlayerController extends Application {
     }
 
     private void setupBigPlayBehaviour(Label albumHeading,
-            Label titleLabel,
-            HBox controlsWrapper,
-            Slider progressSlider,
-            Label leftTime,
-            Label rightTime,
-            HBox bottomBar,
-            Label downloadLabel) {
+                                       Label titleLabel,
+                                       HBox controlsWrapper,
+                                       Slider progressSlider,
+                                       Label leftTime,
+                                       Label rightTime,
+                                       HBox bottomBar,
+                                       Label downloadLabel) {
 
         Button bigPlayBtn;
         StackPane playContainer;
@@ -1855,27 +1892,23 @@ public class PlayerController extends Application {
     }
 
     private void stopPlayback(Slider progressSlider,
-            Label leftTime,
-            Label rightTime,
-            HBox controlsWrapper,
-            Label downloadLabel) {
+                              Label leftTime,
+                              Label rightTime,
+                              HBox controlsWrapper,
+                              Label downloadLabel) {
 
-        if (currentVlcListener != null) {
-            try {
-                vlcPlayer.events().removeMediaPlayerEventListener(currentVlcListener);
-            } catch (Exception ignored) {
-            }
-            currentVlcListener = null;
-        }
-        vlcHandlersAttached = false;
+        // Intentionally NOT removing VLC listener or setting vlcHandlersAttached to false
+        // to prevent JNA native callback memory leaks
 
-        if (currentTempFile != null) {
-            try {
-                if (currentTempFile.exists())
-                    currentTempFile.delete();
-            } catch (Exception ignored) {
+        synchronized (PlayerController.this) {
+            if (currentTempFile != null) {
+                try {
+                    if (currentTempFile.exists())
+                        currentTempFile.delete();
+                } catch (Exception ignored) {
+                }
+                currentTempFile = null;
             }
-            currentTempFile = null;
         }
 
         if (vlcPlayer != null) {
@@ -1969,7 +2002,6 @@ public class PlayerController extends Application {
                 + File.separator + "temp");
         tempDir.mkdirs();
         File tempFile = new File(tempDir, "play_" + System.currentTimeMillis() + ".mp3");
-        tempFile.deleteOnExit(); 
 
         try (FileInputStream fis = new FileInputStream(encryptedFile);
              CipherInputStream cis = CryptoUtil.decrypt(fis);
