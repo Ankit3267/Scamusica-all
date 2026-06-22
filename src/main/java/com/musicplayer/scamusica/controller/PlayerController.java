@@ -40,6 +40,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.prefs.Preferences;
 import java.util.stream.Collectors;
+import javafx.scene.Node;
 
 import com.musicplayer.scamusica.util.OfflineCache;
 
@@ -119,6 +120,9 @@ public class PlayerController extends Application {
     private AdScheduler adScheduler;
     private AdPlayer adPlayer;
     private List<Ad> allAds = new ArrayList<>();
+
+    private AudioCallbackHandler audioCallbackHandler;
+    private LedVuMeter ledVuMeter;
 
     @Override
     public void start(Stage primaryStage) {
@@ -276,7 +280,14 @@ public class PlayerController extends Application {
         sequencesLabel.getStyleClass().add("section-heading-sequences");
 
         // New Code
-        VBox rightColumn = new VBox(8);
+        try {
+            audioCallbackHandler = new AudioCallbackHandler();
+        } catch (Exception e) {
+            e.printStackTrace();
+            audioCallbackHandler = null;
+        }
+
+        VBox rightColumn = new VBox(4);
         rightColumn.getChildren().addAll(sequencesLabel, playlistHeaderBox);
 
         HBox rightWrapper = new HBox(rightColumn);
@@ -294,8 +305,32 @@ public class PlayerController extends Application {
         Label rightTime = controlsUtil.createTimeLabel(true);
         HBox timesRow = controlsUtil.createTimesRow(leftTime, rightTime);
         HBox progressRow = controlsUtil.createProgressRow(progressSlider);
+        // Original line — touch mat karo
+// LedVuMeter initialize karo PEHLE sliderContainer ke
+        ledVuMeter = new LedVuMeter();
+        if (audioCallbackHandler != null) {
+            ledVuMeter.setAudioCallbackHandler(audioCallbackHandler);
+        }
+
+        // Original line — touch mat karo
         VBox sliderContainer = controlsUtil.createSliderContainer(titleCentered, timesRow, progressRow);
-        HBox controlsWrapper = controlsUtil.createControls(progressSlider, playlistPill);
+        // Ab sliderContainer ka pehla child (title row) StackPane mein wrap karo
+        try {
+            // sliderContainer ka index 0 = title label node
+            Node titleNode = sliderContainer.getChildren().get(0);
+            sliderContainer.getChildren().remove(0);
+
+            StackPane titleWithVu = new StackPane();
+            titleWithVu.getChildren().addAll(titleNode, ledVuMeter);
+            StackPane.setAlignment(titleNode, Pos.CENTER);
+            StackPane.setAlignment(ledVuMeter, Pos.CENTER_RIGHT);
+            ledVuMeter.setTranslateY(2);
+            ledVuMeter.setTranslateX(-86); // right side se thoda andar
+
+            sliderContainer.getChildren().add(0, titleWithVu);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }       HBox controlsWrapper = controlsUtil.createControls(progressSlider, playlistPill);
         globalControlsWrapper = controlsWrapper;
 
         HBox bottomBar = controlsUtil.createBottomBar();
@@ -415,9 +450,19 @@ public class PlayerController extends Application {
 
             NetworkMonitor.getInstance().stop();
 //            MemoryWatchdog.getInstance().stop();
+
+            // ✅ VU Meter cleanup
+            if (ledVuMeter != null) {
+                ledVuMeter.stop();
+            }
+            if (audioCallbackHandler != null) {
+                audioCallbackHandler.close();
+            }
+
             Platform.exit();
 
             System.exit(0);
+
         });
 
         primaryStage.show();
@@ -699,6 +744,12 @@ public class PlayerController extends Application {
                         }
 
                         setGenreSwitchEnabled(false);
+
+//                        // Ad start hone par saved volume restore karo
+//                        double savedVol = prefs.getDouble(PREF_VOLUME, 85.0);
+//                        if (vlcPlayer != null) {
+//                            vlcPlayer.audio().setVolume((int) savedVol);
+//                        }
 
                         if (globalBottomBar != null) {
                             Slider volumeSlider = controlsUtil.getVolumeSlider(globalBottomBar);
@@ -1692,6 +1743,10 @@ public class PlayerController extends Application {
                     if (bigIcon != null) {
                         bigIcon.setIconLiteral("fas-pause");
                     }
+                    // ✅ VU Meter start
+                    if (ledVuMeter != null) {
+                        ledVuMeter.start();
+                    }
                 });
             }
 
@@ -1702,6 +1757,10 @@ public class PlayerController extends Application {
                     if (bigIcon != null) {
                         bigIcon.setIconLiteral("fas-play");
                     }
+                    // ✅ VU Meter stop
+                    if (ledVuMeter != null) {
+                        ledVuMeter.stop();
+                    }
                 });
             }
 
@@ -1711,6 +1770,10 @@ public class PlayerController extends Application {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {
                         bigIcon.setIconLiteral("fas-play");
+                    }
+                    // ✅ VU Meter stop
+                    if (ledVuMeter != null) {
+                        ledVuMeter.stop();
                     }
                 });
             }
@@ -1730,6 +1793,22 @@ public class PlayerController extends Application {
                         leftTime.setText(formatTime(newTime / 1000));
 
                         rightTime.setText("-" + formatTime((duration - newTime) / 1000));
+                    }
+                    if (ledVuMeter != null && vlcPlayer != null) {
+                        int vol = vlcPlayer.audio().volume(); // 0-100
+                        if (vol <= 0) {
+                            ledVuMeter.setManualLevel(0f);
+                        } else {
+                            float volFactor = vol / 100.0f;
+                            // Base level volume ke saath scale hoga
+                            // vol=100 -> max ~1.0 (red zone tak)
+                            // vol=60  -> max ~0.60 (yellow zone tak)
+                            // vol=30  -> max ~0.30 (green zone mein)
+                            float minLevel = 0.25f * volFactor;
+                            float maxLevel = volFactor; // 100% vol = 1.0 = full red possible
+                            float sim = minLevel + (float)(Math.random() * (maxLevel - minLevel));
+                            ledVuMeter.setManualLevel(sim);
+                        }
                     }
                 });
             }

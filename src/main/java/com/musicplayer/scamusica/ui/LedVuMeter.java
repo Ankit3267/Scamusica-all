@@ -149,6 +149,13 @@ public class LedVuMeter extends Canvas {
         drawChannel(gc, rowHeight + rowSpacing, rowHeight, currentRight, peakRight);
     }
 
+    public void setManualLevel(float level) {
+        this.currentLeft = level;
+        this.currentRight = level * 0.9f; // slight stereo effect
+        this.peakLeft = Math.max(peakLeft, level);
+        this.peakRight = Math.max(peakRight, level * 0.9f);
+    }
+
     private void drawChannel(GraphicsContext gc, double y, double height, float level, float peak) {
         double w = getWidth();
         double segSpacing = 1.5;

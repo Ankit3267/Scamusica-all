@@ -35,6 +35,7 @@
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/CryptoUtil.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/DeviceUtil.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/EncryptionUtil.java
+/windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/ImageCache.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/ImageFormatConverter.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/OfflineCache.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/PlaybackHistoryLogger.java

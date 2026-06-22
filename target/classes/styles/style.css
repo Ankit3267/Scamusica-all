@@ -428,3 +428,16 @@
     -fx-padding: 3 6;
     -fx-alignment: center;
 }
+
+.led-vu-meter {
+    -fx-padding: 2 4 2 4;
+    -fx-background-color: rgba(0, 0, 0, 0.1);
+    -fx-border-color: rgba(0, 0, 0, 0.2);
+    -fx-border-radius: 3;
+    -fx-background-radius: 3;
+}
+
+/* Ensure VU meter canvas is properly sized */
+.led-vu-meter Canvas {
+    -fx-smooth: true;
+}
