@@ -46,7 +46,6 @@ com/musicplayer/scamusica/util/EncryptionUtil.class
 com/musicplayer/scamusica/util/DeviceUtil.class
 com/musicplayer/scamusica/ui/PlayerControls.class
 com/musicplayer/scamusica/service/InternetState$State.class
-com/musicplayer/scamusica/controller/PlayerController$5.class
 com/musicplayer/scamusica/storage/SongMetadataStore.class
 com/musicplayer/scamusica/service/DownloadManager$DownloadListener.class
 com/musicplayer/scamusica/service/DownloadManager.class

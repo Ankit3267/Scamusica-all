@@ -32,6 +32,7 @@ public class AdScheduler {
     private static final ZoneId SYSTEM_ZONE = ZoneId.systemDefault();
 
     private final Map<Integer, LocalTime> lastPlayedTime = new ConcurrentHashMap<>();
+    private final Map<String, LocalDate> lastPlayedCustom = new ConcurrentHashMap<>();
 
     public AdScheduler(List<Ad> ads, AdScheduleListener listener) {
         this.allAds = ads != null ? new ArrayList<>(ads) : new ArrayList<>();
@@ -53,11 +54,16 @@ public class AdScheduler {
 
         AppLogger.log("[AdScheduler] Starting with " + allAds.size() + " ads");
 
+        // Run an immediate check for the current minute on startup
+        scheduler.submit(this::checkAndTriggerAds);
+
+        // Schedule periodic checks to execute precisely at the start of each wall-clock minute
+        long initialDelayMs = 60000 - (System.currentTimeMillis() % 60000);
         scheduler.scheduleAtFixedRate(
                 this::checkAndTriggerAds,
-                0,
-                1,
-                TimeUnit.MINUTES
+                initialDelayMs,
+                60000,
+                TimeUnit.MILLISECONDS
         );
     }
 
@@ -79,8 +85,17 @@ public class AdScheduler {
                         .map(Ad::getId)
                         .collect(java.util.stream.Collectors.toSet());
                 lastPlayedTime.keySet().retainAll(validIds);
+                lastPlayedCustom.keySet().removeIf(key -> {
+                    try {
+                        int adId = Integer.parseInt(key.split("-")[0]);
+                        return !validIds.contains(adId);
+                    } catch (Exception e) {
+                        return true;
+                    }
+                });
             } else {
                 lastPlayedTime.clear();
+                lastPlayedCustom.clear();
             }
         }
         AppLogger.log("[AdScheduler] Updated with " + allAds.size() + " ads");
@@ -170,26 +185,22 @@ public class AdScheduler {
             return false;
         }
 
-        String currentMinute = currentTime.format(TIME_FORMATTER);
+        LocalDate today = LocalDate.now(SYSTEM_ZONE);
+        lastPlayedCustom.values().removeIf(date -> !date.equals(today));
 
         for (String scheduledTime : playTimes) {
             try {
-
                 LocalTime scheduled = LocalTime.parse(scheduledTime, TIME_FORMATTER);
 
-                long diff = Math.abs(
-                        Duration.between(scheduled, currentTime).toSeconds()
-                );
-
-                AppLogger.log("[AdScheduler] Current=" + currentTime +
-                        " Scheduled=" + scheduled +
-                        " Diff=" + diff);
-
-                if (diff <= 59) {
-                    AppLogger.log("[AdScheduler] Ad matched for current time");
-                    return true;
+                if (currentTime.getHour() == scheduled.getHour() && currentTime.getMinute() == scheduled.getMinute()) {
+                    String key = ad.getId() + "-" + scheduledTime;
+                    LocalDate lastPlayedDate = lastPlayedCustom.get(key);
+                    if (lastPlayedDate == null || !lastPlayedDate.equals(today)) {
+                        AppLogger.log("[AdScheduler] Ad matched for current time: " + scheduledTime);
+                        lastPlayedCustom.put(key, today);
+                        return true;
+                    }
                 }
-
             } catch (Exception e) {
                 AppLogger.log("[AdScheduler] Invalid time format: " + scheduledTime);
             }

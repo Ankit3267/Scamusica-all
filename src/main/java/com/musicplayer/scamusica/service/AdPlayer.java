@@ -27,7 +27,7 @@ public class AdPlayer {
 
     private final MediaPlayer vlcPlayer;
     private final AdPlaybackListener listener;
-//    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    // private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "AdPlayer-Thread");
@@ -47,7 +47,8 @@ public class AdPlayer {
     }
 
     public void queueAds(List<Ad> ads) {
-        if (ads == null || ads.isEmpty()) return;
+        if (ads == null || ads.isEmpty())
+            return;
 
         AppLogger.log("[AdPlayer] Queueing " + ads.size() + " ads");
 
@@ -65,7 +66,8 @@ public class AdPlayer {
             }
         }
 
-        if (playableAds.isEmpty()) return;
+        if (playableAds.isEmpty())
+            return;
 
         AppLogger.log("[AdPlayer] Queueing " + playableAds.size() + " playable ads");
         List<Ad> shuffled = new ArrayList<>(playableAds);
@@ -109,16 +111,18 @@ public class AdPlayer {
 
         if (!songPausedForAds) {
             // Step 1: Save current song state
-            final long[] timeRef = {0L};
-            final int[] volRef = {100};
+            final long[] timeRef = { 0L };
+            final int[] volRef = { 100 };
             CountDownLatch stateLatch = new CountDownLatch(1);
             Platform.runLater(() -> {
                 try {
                     timeRef[0] = vlcPlayer.status().time();
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 try {
                     volRef[0] = vlcPlayer.audio().volume();
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 stateLatch.countDown();
             });
             try {
@@ -131,19 +135,22 @@ public class AdPlayer {
             try {
                 int steps = 20;
                 for (int i = 0; i < steps; i++) {
-                    if (!isPlayingAd) break;
+                    if (!isPlayingAd)
+                        break;
                     int currentVol = (int) (originalVol * (1.0 - (double) i / steps));
                     Platform.runLater(() -> {
                         try {
                             vlcPlayer.audio().setVolume(currentVol);
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     });
                     Thread.sleep(100);
                 }
                 Platform.runLater(() -> {
                     try {
                         vlcPlayer.audio().setVolume(0);
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                 });
             } catch (Exception e) {
             }
@@ -223,7 +230,8 @@ public class AdPlayer {
 
                 try {
                     cleanupLatch.await(5, TimeUnit.SECONDS);
-                } catch (InterruptedException ignored) {}
+                } catch (InterruptedException ignored) {
+                }
 
                 Thread.sleep(300); // Minor delay between consecutive audios
             }
@@ -249,7 +257,8 @@ public class AdPlayer {
     }
 
     private String buildAdUrl(com.musicplayer.scamusica.model.AdAudio adAudio) {
-        if (adAudio == null) return null;
+        if (adAudio == null)
+            return null;
 
         File localFile = AdDownloadManager.getLocalAdFile(adAudio);
         if (localFile != null && localFile.exists() && localFile.length() > 1024) {
@@ -263,7 +272,8 @@ public class AdPlayer {
         }
 
         String audioFile = adAudio.getAudioFile();
-        if (audioFile == null || audioFile.isEmpty()) return null;
+        if (audioFile == null || audioFile.isEmpty())
+            return null;
 
         if (audioFile.startsWith("http://") || audioFile.startsWith("https://")) {
             return audioFile;

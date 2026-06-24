@@ -27,17 +27,20 @@ public class AdDownloadManager {
 
     public static File getAdDir() {
         File dir = new File(System.getProperty("user.home") + File.separator + AD_DIR_NAME);
-        if (!dir.exists()) dir.mkdirs();
+        if (!dir.exists())
+            dir.mkdirs();
         return dir;
     }
 
     public static File getLocalAdFile(com.musicplayer.scamusica.model.AdAudio adAudio) {
-        if (adAudio == null || adAudio.getId() == null) return null;
+        if (adAudio == null || adAudio.getId() == null)
+            return null;
         return new File(getAdDir(), "ad-audio-" + adAudio.getId() + ".mp3");
     }
 
     public static boolean isAdDownloaded(Ad ad) {
-        if (ad == null || ad.getAdAudios() == null || ad.getAdAudios().isEmpty()) return false;
+        if (ad == null || ad.getAdAudios() == null || ad.getAdAudios().isEmpty())
+            return false;
         for (com.musicplayer.scamusica.model.AdAudio adAudio : ad.getAdAudios()) {
             File f = getLocalAdFile(adAudio);
             if (f == null || !f.exists() || f.length() <= 1024) {
@@ -48,7 +51,8 @@ public class AdDownloadManager {
     }
 
     public static void downloadAd(Ad ad) {
-        if (ad == null || ad.getId() == null || ad.getAdAudios() == null) return;
+        if (ad == null || ad.getId() == null || ad.getAdAudios() == null)
+            return;
         if (isAdDownloaded(ad)) {
             AppLogger.log("[AdDownload] Already exists all audios for ad-" + ad.getId());
             return;
@@ -60,12 +64,15 @@ public class AdDownloadManager {
     }
 
     private static void downloadAdAudio(com.musicplayer.scamusica.model.AdAudio adAudio) {
-        if (adAudio == null || adAudio.getId() == null) return;
+        if (adAudio == null || adAudio.getId() == null)
+            return;
         File f = getLocalAdFile(adAudio);
-        if (f != null && f.exists() && f.length() > 1024) return;
+        if (f != null && f.exists() && f.length() > 1024)
+            return;
 
         String audioFile = adAudio.getAudioFile();
-        if (audioFile == null || audioFile.isEmpty()) return;
+        if (audioFile == null || audioFile.isEmpty())
+            return;
 
         String downloadUrl;
         if (audioFile.startsWith("http://") || audioFile.startsWith("https://")) {
@@ -75,7 +82,8 @@ public class AdDownloadManager {
                     .replace(" ", "%20")
                     .replace("(", "%28")
                     .replace(")", "%29");
-            if (!encoded.startsWith("/")) encoded = "/" + encoded;
+            if (!encoded.startsWith("/"))
+                encoded = "/" + encoded;
             downloadUrl = Utility.BASE_URL.get() + encoded;
         }
 
@@ -98,7 +106,7 @@ public class AdDownloadManager {
                 int responseCode = conn.getResponseCode();
                 if (responseCode == 200) {
                     try (InputStream is = conn.getInputStream();
-                         FileOutputStream fos = new FileOutputStream(outFile)) {
+                            FileOutputStream fos = new FileOutputStream(outFile)) {
                         byte[] buffer = new byte[8192];
                         int read;
                         while ((read = is.read(buffer)) != -1) {
@@ -118,7 +126,8 @@ public class AdDownloadManager {
     }
 
     public static void downloadAllAds(List<Ad> ads) {
-        if (ads == null || ads.isEmpty()) return;
+        if (ads == null || ads.isEmpty())
+            return;
         for (Ad ad : ads) {
             downloadAd(ad);
         }
