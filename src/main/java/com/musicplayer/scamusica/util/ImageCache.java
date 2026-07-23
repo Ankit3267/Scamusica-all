@@ -107,13 +107,21 @@ public class ImageCache {
                     return img;
                 }
             } else {
-                return new Image(imageUrl, 400, 400, true, true, true);
+                Image img = new Image(imageUrl, 400, 400, true, true);
+                synchronized (memoryCache) {
+                    memoryCache.put(imageUrl, img);
+                }
+                return img;
             }
 
         } catch (Exception e) {
             AppLogger.log("[ImageCache] Error loading image: " + e.getMessage());
             // Fallback to direct loading
-            return new Image(imageUrl, 400, 400, true, true, true);
+            Image img = new Image(imageUrl, 400, 400, true, true);
+            synchronized (memoryCache) {
+                memoryCache.put(imageUrl, img);
+            }
+            return img;
         }
     }
 

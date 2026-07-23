@@ -54,8 +54,8 @@ public class AdScheduler {
 
         AppLogger.log("[AdScheduler] Starting with " + allAds.size() + " ads");
 
-        // Run an immediate check for the current minute on startup
-        scheduler.submit(this::checkAndTriggerAds);
+        // Delay the initial check by 20 seconds to avoid startup race conditions
+        scheduler.schedule(this::checkAndTriggerAds, 20, TimeUnit.SECONDS);
 
         // Schedule periodic checks to execute precisely at the start of each wall-clock minute
         long initialDelayMs = 60000 - (System.currentTimeMillis() % 60000);

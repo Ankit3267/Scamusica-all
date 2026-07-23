@@ -21,28 +21,32 @@ public class PlaybackHistoryLogger {
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("dd-MM-yyyy hh:mm:ss a");
 
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
     static {
         try {
-
             File dir = new File(BASE_DIR);
-
             if (!dir.exists()) {
                 dir.mkdirs();
             }
-
-            File file = new File(LOG_FILE);
-
-            if (!file.exists()) {
-                file.createNewFile();
-            }
-
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public static synchronized void logSong(PlaylistTrack track) {
+    private static void checkAndRotate() {
+        File file = new File(LOG_FILE);
+        if (file.exists() && file.length() > MAX_FILE_SIZE) {
+            File backup = new File(LOG_FILE + ".old");
+            if (backup.exists()) {
+                backup.delete();
+            }
+            file.renameTo(backup);
+        }
+    }
 
+    public static synchronized void logSong(PlaylistTrack track) {
+        checkAndRotate();
         try (BufferedWriter writer =
                      new BufferedWriter(new FileWriter(LOG_FILE, true))) {
 
@@ -61,10 +65,17 @@ public class PlaybackHistoryLogger {
 
             AppLogger.log("[HISTORY] Logged -> " + track.getTitle());
 
+            // Sync to server (additive — does not affect local logging)
+            try {
+                com.musicplayer.scamusica.service.LogSyncService.getInstance()
+                        .addSongLog(track.getId(), track.getTitle(),
+                                track.getFolderTitle(), track.getUrl());
+            } catch (Exception syncEx) {
+                AppLogger.log("[HISTORY] Server sync queue failed: " + syncEx.getMessage());
+            }
+
         } catch (Exception e) {
-
             AppLogger.log("[HISTORY ERROR] " + e.getMessage());
-
             e.printStackTrace();
         }
     }

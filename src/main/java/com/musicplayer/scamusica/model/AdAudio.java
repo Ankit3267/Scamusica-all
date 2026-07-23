@@ -18,14 +18,18 @@ public class AdAudio {
     @SerializedName("sort_order")
     private Integer sortOrder;
 
+    @SerializedName("ad_title")
+    private String adTitle;
+
     public AdAudio() {}
 
-    public AdAudio(Integer id, Integer adId, String audioFile, String audioSource, Integer sortOrder) {
+    public AdAudio(Integer id, Integer adId, String audioFile, String audioSource, Integer sortOrder, String adTitle) {
         this.id = id;
         this.adId = adId;
         this.audioFile = audioFile;
         this.audioSource = audioSource;
         this.sortOrder = sortOrder;
+        this.adTitle = adTitle;
     }
 
     public Integer getId() {
@@ -66,6 +70,14 @@ public class AdAudio {
 
     public void setSortOrder(Integer sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+    public String getAdTitle() {
+        return adTitle;
+    }
+
+    public void setAdTitle(String adTitle) {
+        this.adTitle = adTitle;
     }
 
     @Override

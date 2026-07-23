@@ -62,7 +62,11 @@ public class HeartbeatService {
         }
 
         AppLogger.log("[HeartbeatService] Starting heartbeat service...");
-        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "Heartbeat-Thread");
+            t.setDaemon(true);
+            return t;
+        });
 
         // Send immediately, then every 30 minutes
         scheduler.scheduleAtFixedRate(() -> {
@@ -71,7 +75,7 @@ public class HeartbeatService {
             } catch (Exception e) {
                 AppLogger.log("[HeartbeatService] Error in heartbeat task: " + e.getMessage());
             }
-        }, 0, 30, TimeUnit.SECONDS);
+        }, 0, 15, TimeUnit.MINUTES);
     }
 
     public void stop() {

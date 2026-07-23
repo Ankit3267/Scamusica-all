@@ -25,6 +25,8 @@ public class AudioCallbackHandler extends AudioCallbackAdapter {
 
     private volatile float leftPeak = 0.0f;
     private volatile float rightPeak = 0.0f;
+    
+    private byte[] buffer = new byte[16384]; // Pre-allocated buffer
 
     public AudioCallbackHandler() throws Exception {
         super();
@@ -63,7 +65,11 @@ public class AudioCallbackHandler extends AudioCallbackAdapter {
             return;
         }
 
-        byte[] data = samples.getByteArray(0, bytesCount);
+        if (buffer.length < bytesCount) {
+            buffer = new byte[bytesCount * 2];
+        }
+        samples.read(0, buffer, 0, bytesCount);
+        byte[] data = buffer;
 
         // 1. Calculate Peak Amplitude (Pre-volume scaling) for visualization
         float maxLeft = 0.0f;

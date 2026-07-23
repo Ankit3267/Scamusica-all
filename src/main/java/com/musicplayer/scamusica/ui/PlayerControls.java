@@ -192,6 +192,48 @@ public class PlayerControls {
         volumeSlider.setMinWidth(60);
         volumeSlider.setMaxWidth(260);
         volumeSlider.getStyleClass().add("volume-slider");
+
+        Label volumeLabel = new Label();
+        volumeLabel.setStyle("-fx-text-fill: black; -fx-font-size: 10px; -fx-font-weight: bold;");
+        volumeLabel.setMouseTransparent(true);
+        volumeLabel.textProperty().bind(
+                Bindings.createStringBinding(
+                        () -> String.format("%d%%", (int) volumeSlider.getValue()),
+                        volumeSlider.valueProperty()
+                )
+        );
+
+        Pane labelPane = new Pane(volumeLabel);
+        labelPane.setMouseTransparent(true);
+        labelPane.setPrefHeight(15);
+        volumeLabel.translateXProperty().bind(
+                Bindings.createDoubleBinding(
+                        () -> {
+                            double w = volumeSlider.getWidth();
+                            if (w <= 0) w = volumeSlider.getPrefWidth();
+                            double val = volumeSlider.getValue();
+                            double max = volumeSlider.getMax();
+                            if (max <= 0) max = 100;
+                            double fraction = val / max;
+                            
+                            double labelW = volumeLabel.getWidth();
+                            if (labelW <= 0) labelW = 20;
+                            
+                            double thumbW = 14; 
+                            double trackLength = w - thumbW;
+                            
+                            double centerPos = (thumbW / 2.0) + (trackLength * fraction);
+                            return centerPos - (labelW / 2.0);
+                        },
+                        volumeSlider.valueProperty(),
+                        volumeSlider.widthProperty(),
+                        volumeLabel.widthProperty()
+                )
+        );
+
+        VBox volumeBox = new VBox(0, volumeSlider, labelPane);
+        volumeBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
         FontIcon volHigh = new FontIcon("fas-volume-up");
         volHigh.setIconSize(14);
         volHigh.getStyleClass().add("volume-icon");
@@ -199,7 +241,7 @@ public class PlayerControls {
         HBox.setHgrow(hSpacer, Priority.ALWAYS);
         hSpacer.setMouseTransparent(true);
 
-        HBox bottomBar = new HBox(12, downloadLabel, hSpacer, volLow, volumeSlider, volHigh);
+        HBox bottomBar = new HBox(12, downloadLabel, hSpacer, volLow, volumeBox, volHigh);
         bottomBar.getStyleClass().add("bottom-bar");
         bottomBar.setPadding(new Insets(0, 24, 0, 24));
         bottomBar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
@@ -482,6 +524,11 @@ public class PlayerControls {
     public Slider getVolumeSlider(HBox bottomBar) {
         for (Node n : bottomBar.getChildren()) {
             if (n instanceof Slider) return (Slider) n;
+            if (n instanceof VBox) {
+                for (Node child : ((VBox) n).getChildren()) {
+                    if (child instanceof Slider) return (Slider) child;
+                }
+            }
         }
         return null;
     }

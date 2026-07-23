@@ -4,6 +4,8 @@ import com.google.gson.*;
 import com.musicplayer.scamusica.manager.SessionManager;
 import com.musicplayer.scamusica.model.Ad;
 import com.musicplayer.scamusica.model.PlaylistTrack;
+import com.musicplayer.scamusica.model.VolumeSchedule;
+import com.musicplayer.scamusica.model.VolumeSettings;
 import com.musicplayer.scamusica.util.ApiClient;
 import com.musicplayer.scamusica.util.AppLogger;
 import com.musicplayer.scamusica.util.OfflineCache;
@@ -333,9 +335,9 @@ public class PlaylistApiService {
     }
 
     private PlaylistTrack parseSongToTrack(JsonObject songObj,
-                                           String commonPath,
-                                           String folderTitle,
-                                           String albumImg) {
+            String commonPath,
+            String folderTitle,
+            String albumImg) {
         if (!songObj.has("file")) {
             System.out.println("[PlaylistApiService] Song missing 'file' field, skipping.");
             return null;
@@ -380,7 +382,9 @@ public class PlaylistApiService {
         if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
             fullUrl = filePath;
         } else {
-            fullUrl = Utility.BASE_URL.get() + filePath;
+            // fullUrl = Utility.FILEPATH_BASE_URL.get() + filePath;
+            fullUrl = Utility.FILEPATH_BASE_URL.get() + "/" + filePath.replaceFirst("^/", "");
+
         }
 
         int durationSeconds = 0;
@@ -409,7 +413,7 @@ public class PlaylistApiService {
             if (albumImgPath.startsWith("http://") || albumImgPath.startsWith("https://")) {
                 fullAlbumImgUrl = albumImgPath;
             } else {
-                fullAlbumImgUrl = Utility.BASE_URL.get()
+                fullAlbumImgUrl = Utility.FILEPATH_BASE_URL.get()
                         + "/"
                         + albumImgPath.replaceFirst("^/", "");
             }
@@ -441,28 +445,50 @@ public class PlaylistApiService {
 
                 Ad ad = new Ad();
                 ad.setId(adObj.has("id") && !adObj.get("id").isJsonNull() ? adObj.get("id").getAsInt() : null);
-                ad.setCampaignName(adObj.has("campaign_name") && !adObj.get("campaign_name").isJsonNull() ? adObj.get("campaign_name").getAsString() : "Unknown");
-                ad.setScheduleType(adObj.has("schedule_type") && !adObj.get("schedule_type").isJsonNull() ? adObj.get("schedule_type").getAsString() : null);
-                ad.setStartDate(adObj.has("start_date") && !adObj.get("start_date").isJsonNull() ? adObj.get("start_date").getAsString() : null);
-                ad.setEndDate(adObj.has("end_date") && !adObj.get("end_date").isJsonNull() ? adObj.get("end_date").getAsString() : null);
-                ad.setStatus(adObj.has("status") && !adObj.get("status").isJsonNull() ? adObj.get("status").getAsString() : "inactive");
+                ad.setCampaignName(adObj.has("campaign_name") && !adObj.get("campaign_name").isJsonNull()
+                        ? adObj.get("campaign_name").getAsString()
+                        : "Unknown");
+                ad.setScheduleType(adObj.has("schedule_type") && !adObj.get("schedule_type").isJsonNull()
+                        ? adObj.get("schedule_type").getAsString()
+                        : null);
+                ad.setStartDate(adObj.has("start_date") && !adObj.get("start_date").isJsonNull()
+                        ? adObj.get("start_date").getAsString()
+                        : null);
+                ad.setEndDate(adObj.has("end_date") && !adObj.get("end_date").isJsonNull()
+                        ? adObj.get("end_date").getAsString()
+                        : null);
+                ad.setStatus(
+                        adObj.has("status") && !adObj.get("status").isJsonNull() ? adObj.get("status").getAsString()
+                                : "inactive");
 
                 List<com.musicplayer.scamusica.model.AdAudio> adAudioList = new ArrayList<>();
                 if (adObj.has("adAudios") && adObj.get("adAudios").isJsonArray()) {
                     JsonArray adAudiosArray = adObj.getAsJsonArray("adAudios");
                     for (JsonElement audioEl : adAudiosArray) {
-                        if (!audioEl.isJsonObject()) continue;
+                        if (!audioEl.isJsonObject())
+                            continue;
                         JsonObject audioObj = audioEl.getAsJsonObject();
                         com.musicplayer.scamusica.model.AdAudio adAudio = new com.musicplayer.scamusica.model.AdAudio();
-                        adAudio.setId(audioObj.has("id") && !audioObj.get("id").isJsonNull() ? audioObj.get("id").getAsInt() : null);
-                        adAudio.setAdId(audioObj.has("ad_id") && !audioObj.get("ad_id").isJsonNull() ? audioObj.get("ad_id").getAsInt() : null);
-                        adAudio.setAudioFile(audioObj.has("audio_file") && !audioObj.get("audio_file").isJsonNull() ? audioObj.get("audio_file").getAsString() : null);
-                        adAudio.setAudioSource(audioObj.has("audio_source") && !audioObj.get("audio_source").isJsonNull() ? audioObj.get("audio_source").getAsString() : null);
-                        adAudio.setSortOrder(audioObj.has("sort_order") && !audioObj.get("sort_order").isJsonNull() ? audioObj.get("sort_order").getAsInt() : 0);
+                        adAudio.setId(
+                                audioObj.has("id") && !audioObj.get("id").isJsonNull() ? audioObj.get("id").getAsInt()
+                                        : null);
+                        adAudio.setAdId(audioObj.has("ad_id") && !audioObj.get("ad_id").isJsonNull()
+                                ? audioObj.get("ad_id").getAsInt()
+                                : null);
+                        adAudio.setAudioFile(audioObj.has("audio_file") && !audioObj.get("audio_file").isJsonNull()
+                                ? audioObj.get("audio_file").getAsString()
+                                : null);
+                        adAudio.setAudioSource(
+                                audioObj.has("audio_source") && !audioObj.get("audio_source").isJsonNull()
+                                        ? audioObj.get("audio_source").getAsString()
+                                        : null);
+                        adAudio.setSortOrder(audioObj.has("sort_order") && !audioObj.get("sort_order").isJsonNull()
+                                ? audioObj.get("sort_order").getAsInt()
+                                : 0);
                         adAudioList.add(adAudio);
                     }
                 }
-                
+
                 adAudioList.sort(Comparator.comparingInt(a -> a.getSortOrder() != null ? a.getSortOrder() : 0));
                 ad.setAdAudios(adAudioList);
 
@@ -506,6 +532,39 @@ public class PlaylistApiService {
             // Try cache if available
             // List<Ad> cached = OfflineCache.loadAds();
             return new ArrayList<>();
+        }
+    }
+
+    public VolumeSettings fetchVolumeSettings() throws Exception {
+        try {
+            JsonObject root = fetchRootJson();
+            if (!root.has("data") || !root.get("data").isJsonObject()) {
+                return null;
+            }
+
+            JsonObject dataObj = root.getAsJsonObject("data");
+            if (!dataObj.has("volume") || !dataObj.get("volume").isJsonObject()) {
+                return null;
+            }
+
+            Gson gson = new Gson();
+            VolumeSettings volumeSettings = gson.fromJson(dataObj.get("volume"), VolumeSettings.class);
+            AppLogger.log("[PlaylistApiService] Fetched volume settings from API");
+
+            if (volumeSettings != null) {
+                OfflineCache.saveVolumeSettings(volumeSettings);
+            }
+
+            return volumeSettings;
+
+        } catch (Exception e) {
+            AppLogger.log("[PlaylistApiService] fetchVolumeSettings failed: " + e.getMessage());
+            VolumeSettings cached = OfflineCache.loadVolumeSettings();
+            if (cached != null) {
+                AppLogger.log("[PlaylistApiService] Using cached volume settings");
+                return cached;
+            }
+            return null;
         }
     }
 }

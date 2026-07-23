@@ -84,7 +84,7 @@ public class AdDownloadManager {
                     .replace(")", "%29");
             if (!encoded.startsWith("/"))
                 encoded = "/" + encoded;
-            downloadUrl = Utility.BASE_URL.get() + encoded;
+            downloadUrl = Utility.FILEPATH_BASE_URL.get() + encoded;
         }
 
         final String finalUrl = downloadUrl;

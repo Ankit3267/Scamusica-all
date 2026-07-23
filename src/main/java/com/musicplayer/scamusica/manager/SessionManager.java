@@ -27,7 +27,7 @@ public class SessionManager {
     }
 
     // Save token + language to file
-    public static void saveToken(String token, Integer userID, String language) {
+    public static void saveToken(String token, Integer userID, String language, String licenseCode) {
         try {
             File dir = new File(CONFIG_DIR);
             if (!dir.exists()) dir.mkdirs();
@@ -38,10 +38,13 @@ public class SessionManager {
             String encryptedToken = EncryptionUtil.encrypt(token);
 
             String encryptedUserId= EncryptionUtil.encrypt(userID.toString());
+            
+            String encryptedLicense = EncryptionUtil.encrypt(licenseCode);
 
             properties.setProperty("token", encryptedToken);
             properties.setProperty("userId", encryptedUserId);
             properties.setProperty("language", language);
+            properties.setProperty("licenseCode", encryptedLicense);
 
             try(FileOutputStream out = new FileOutputStream(CONFIG_FILE)){
                 properties.store(out, "Scamusica Session");
@@ -120,6 +123,25 @@ public class SessionManager {
             return null;
         }
 
+    }
+
+    public static String getLicenseCode() {
+        try {
+            File file = new File(CONFIG_FILE);
+            if (!file.exists()) return null;
+
+            Properties properties = new Properties();
+            properties.load(new FileInputStream(file));
+
+            String encryptedLicense = properties.getProperty("licenseCode");
+            if (encryptedLicense == null) return null;
+
+            return EncryptionUtil.decrypt(encryptedLicense);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     public static String getLanguage() {

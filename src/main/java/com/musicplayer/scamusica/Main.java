@@ -31,6 +31,12 @@ public class Main extends Application {
 
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             AppLogger.log("[Main] Uncaught Exception in thread " + thread.getName() + ": " + throwable.getMessage());
+            try {
+                com.musicplayer.scamusica.service.LogSyncService.getInstance().addErrorLog(
+                        "Crash: " + throwable.getMessage(), "Main UncaughtExceptionHandler");
+            } catch (Exception ex) {
+                // Ignore sync errors during crash
+            }
             throwable.printStackTrace();
 
             boolean isJnaError = false;

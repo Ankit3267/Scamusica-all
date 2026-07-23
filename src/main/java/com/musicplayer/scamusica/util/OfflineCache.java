@@ -3,6 +3,7 @@ package com.musicplayer.scamusica.util;
 import com.google.gson.*;
 import com.musicplayer.scamusica.model.Ad;
 import com.musicplayer.scamusica.model.PlaylistTrack;
+import com.musicplayer.scamusica.model.VolumeSettings;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -235,6 +236,39 @@ public class OfflineCache {
         } catch (Exception e) {
             AppLogger.log("[OfflineCache] Failed to load ad schedule: " + e.getMessage());
             return new ArrayList<>();
+        }
+    }
+
+    public static void saveVolumeSettings(VolumeSettings settings) {
+        try {
+            File file = new File(getCacheDir(), "volume_settings.json");
+            String json = GSON.toJson(settings);
+            try (FileWriter fw = new FileWriter(file)) {
+                fw.write(json);
+            }
+            AppLogger.log("[OfflineCache] Volume settings saved");
+        } catch (Exception e) {
+            AppLogger.log("[OfflineCache] Failed to save volume settings: " + e.getMessage());
+        }
+    }
+
+    public static VolumeSettings loadVolumeSettings() {
+        try {
+            File file = new File(getCacheDir(), "volume_settings.json");
+            if (!file.exists()) return null;
+
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+            }
+
+            VolumeSettings settings = GSON.fromJson(sb.toString(), VolumeSettings.class);
+            AppLogger.log("[OfflineCache] Volume settings loaded");
+            return settings;
+        } catch (Exception e) {
+            AppLogger.log("[OfflineCache] Failed to load volume settings: " + e.getMessage());
+            return null;
         }
     }
 }

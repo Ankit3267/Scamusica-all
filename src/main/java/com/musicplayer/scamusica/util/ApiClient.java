@@ -176,6 +176,7 @@ public class ApiClient {
 
             int responseCode = connection.getResponseCode();
             if (responseCode < 200 || responseCode >= 300) {
+                AppLogger.log("[ApiClient] Error response code: " + responseCode);
                 return false;
             }
 
@@ -203,6 +204,7 @@ public class ApiClient {
             return true;
 
         } catch (Exception e) {
+            AppLogger.log("[ApiClient] Exception during download: " + e.getMessage());
             e.printStackTrace();
             return false;
 

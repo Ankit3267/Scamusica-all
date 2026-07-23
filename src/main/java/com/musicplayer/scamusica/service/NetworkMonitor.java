@@ -121,19 +121,27 @@ public class NetworkMonitor {
     }
 
     private boolean pingServer() {
+        HttpURLConnection connection = null;
         try {
-            HttpURLConnection connection = (HttpURLConnection)
-                    new URL(PING_URL).openConnection();
+            connection = (HttpURLConnection) new URL(PING_URL).openConnection();
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
             connection.setRequestMethod("HEAD");
             connection.setInstanceFollowRedirects(false);
             int responseCode = connection.getResponseCode();
-            connection.disconnect();
+            try {
+                if (connection.getInputStream() != null) {
+                    connection.getInputStream().close();
+                }
+            } catch (Exception ignored) {}
             // 204 = Google's no-content response, 200/301 also valid
             return (responseCode == 204 || responseCode == 200 || responseCode == 301);
         } catch (IOException e) {
             return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 }

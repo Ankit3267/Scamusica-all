@@ -8,6 +8,7 @@ package com.musicplayer.scamusica.ui;
 import com.musicplayer.scamusica.manager.LanguageManager;
 import com.musicplayer.scamusica.manager.SessionManager;
 import com.musicplayer.scamusica.service.NetworkMonitor;
+import com.musicplayer.scamusica.util.Utility;
 import javafx.beans.binding.Bindings;
 import javafx.scene.control.Label;
 import javafx.scene.control.Button;
@@ -37,6 +38,24 @@ public class PlayerHeader {
         Button supportBtn = new Button();
         supportBtn.textProperty().bind(LanguageManager.createStringBinding("button.support"));
         supportBtn.getStyleClass().add("support-pill");
+        supportBtn.setCursor(javafx.scene.Cursor.HAND);
+        
+        supportBtn.setOnAction(event -> {
+            new Thread(() -> {
+                String licenseCode = SessionManager.getLicenseCode();
+                String url = Utility.SUPPORT_URL.get() + (licenseCode != null && !licenseCode.isEmpty() ? "/" + licenseCode : "");
+                try {
+                    if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                        java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+                    } else {
+                        Runtime.getRuntime().exec(new String[]{"xdg-open", url});
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        });
+        
         leftMeta.getChildren().addAll(versionLbl, idLbl, supportBtn);
         return leftMeta;
     }

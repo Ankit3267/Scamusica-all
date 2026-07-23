@@ -236,7 +236,7 @@ public class CodeVerificationController extends Application {
 //                                String token = jsonNode.get("token").asText();
 //                                String langCode = LanguageManager.getLangCode();
 //                                if (langCode == null) langCode = "en";
-//                                SessionManager.saveToken(token, userId, langCode);
+//                                SessionManager.saveToken(token, userId, langCode, enteredPassword);
 //
 //                                Platform.runLater(() -> {
 //                                    // YOUR EXISTING NAVIGATION – unchanged
@@ -362,7 +362,7 @@ public class CodeVerificationController extends Application {
                             String token = jsonNode.get("token").asText();
                             String langCode = LanguageManager.getLangCode();
                             if (langCode == null) langCode = "en";
-                            SessionManager.saveToken(token, userId, langCode);
+                            SessionManager.saveToken(token, userId, langCode, enteredPassword);
 
                             Platform.runLater(() -> {
                                 PlayerController controller = new PlayerController();
