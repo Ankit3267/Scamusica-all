@@ -792,17 +792,17 @@ public class PlayerController extends Application {
 
 //                                This commented code for the Autoswitch the sequence when deduct the new sequence or current sequnece is removed.
 
-//                                if (!newSequences.isEmpty()) {
-//                                    nextSequence = newSequences.get(0);
-//                                    AppLogger.log("[SYNC] New sequence(s) added detected! Switching immediately to: " + nextSequence);
-//                                    sequenceSwitched = true;
-//                                } else if (currentPlaylistName != null && !serverTitles.contains(currentPlaylistName)) {
-//                                    if (!serverTitles.isEmpty()) {
-//                                        nextSequence = serverTitles.get(0);
-//                                        AppLogger.log("[SYNC] Current sequence removed detected! Switching to fallback: " + nextSequence);
-//                                        sequenceSwitched = true;
-//                                    }
-//                                }
+                                if (!newSequences.isEmpty()) {
+                                    nextSequence = newSequences.get(0);
+                                    AppLogger.log("[SYNC] New sequence(s) added detected! Switching immediately to: " + nextSequence);
+                                    sequenceSwitched = true;
+                                } else if (currentPlaylistName != null && !serverTitles.contains(currentPlaylistName)) {
+                                    if (!serverTitles.isEmpty()) {
+                                        nextSequence = serverTitles.get(0);
+                                        AppLogger.log("[SYNC] Current sequence removed detected! Switching to fallback: " + nextSequence);
+                                        sequenceSwitched = true;
+                                    }
+                                }
 
                                 if (!serverTitles.equals(playlistMaster)) {
                                     playlistMaster.clear();
