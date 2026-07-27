@@ -25,7 +25,7 @@ public class NetworkMonitor {
     private static final int FAILURE_THRESHOLD = 2;
 
     // Observable property — UI binds to this
-    private final BooleanProperty online = new SimpleBooleanProperty(false);
+    private final BooleanProperty online = new SimpleBooleanProperty(true);
 
     private ScheduledExecutorService scheduler;
     private volatile boolean running = false;
@@ -62,9 +62,6 @@ public class NetworkMonitor {
     public void start() {
         if (running) return;
         running = true;
-
-        // Check immediately on start
-        checkConnectivity();
 
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "NetworkMonitor");

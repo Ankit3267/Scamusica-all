@@ -137,7 +137,6 @@ public class PlayerController extends Application {
     @Override
     public void start(Stage primaryStage) {
 
-        AppLogger.init();
         // === TEMP CLEANUP ===
         try {
             File tempDir = new File(System.getProperty("user.home")
@@ -160,25 +159,29 @@ public class PlayerController extends Application {
         NetworkMonitor.getInstance().start();
         AppLogger.log("[APP] Player started");
 
-        // Start memory watchdog
-        MemoryWatchdog.getInstance().start();
-
-        // Start heartbeat service
-        HeartbeatService.getInstance().start();
-
-        // Start log sync service
-        LogSyncService.getInstance().start();
+        // Schedule non-critical services to start later to reduce startup contention
+        ScheduledExecutorService startupDelayer = Executors.newSingleThreadScheduledExecutor();
+        startupDelayer.schedule(() -> MemoryWatchdog.getInstance().start(), 60, TimeUnit.SECONDS);
+        startupDelayer.schedule(() -> HeartbeatService.getInstance().start(), 30, TimeUnit.SECONDS);
+        startupDelayer.schedule(() -> LogSyncService.getInstance().start(), 30, TimeUnit.SECONDS);
 
         String appDir = System.getProperty("user.dir");
-
         String vlcPath = appDir + File.separator + "vlc";
-
         System.setProperty("jna.library.path", vlcPath);
+
+        // Pre-fetch API data concurrently
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                apiService.prefetchAll();
+            } catch (Exception ignored) {
+            }
+        });
 
         vlcPlayerComponent = new AudioPlayerComponent();
         vlcPlayer = vlcPlayerComponent.mediaPlayer();
 
-        initializeAdSystem();
+        // Delay AdSystem init slightly to allow UI to render first
+        startupDelayer.schedule(this::initializeAdSystem, 5, TimeUnit.SECONDS);
 
         Button headphonesButton = sidebarUtil.createIconButton("fas-headphones");
         List<Button> sidebarButtons = Arrays.asList(headphonesButton);
@@ -621,8 +624,8 @@ public class PlayerController extends Application {
                     e.printStackTrace();
                 }
             });
-        }, 30, 300, java.util.concurrent.TimeUnit.SECONDS); // 300s = 5 minutes
-
+//        }, 15, 30, java.util.concurrent.TimeUnit.SECONDS); // Changed from 300s to 30s for testing
+    }, 30, 300, java.util.concurrent.TimeUnit.SECONDS); // 300s = 5 minutes
         schedular.scheduleAtFixedRate(() -> {
             try {
                 checkAndApplyVolumeSchedule();
@@ -676,12 +679,124 @@ public class PlayerController extends Application {
         }
 
         try {
+            syncAdsFromServer();
+        } catch (Exception e) {
+            AppLogger.log("[SYNC] Ad sync failed: " + e.getMessage());
+        }
+
+        // ✅ Playlist titles sync with Auto-Switch
+        try {
+            List<String> fetchedTitles = apiService.fetchPlaylistTitles();
+            List<String> serverTitles;
+
+            if (fetchedTitles == null || fetchedTitles.isEmpty()) {
+                serverTitles = new ArrayList<>(java.util.Arrays.asList("Default"));
+                AppLogger.log("[SYNC] API returned empty titles, falling back to Default sequence.");
+            } else {
+                serverTitles = fetchedTitles;
+            }
+
+            if (serverTitles != null && !serverTitles.isEmpty()) {
+                List<String> newSequences = serverTitles.stream()
+                        .filter(title -> !playlistMaster.contains(title))
+                        .collect(Collectors.toList());
+
+                boolean sequenceSwitched = false;
+                String nextSequence = null;
+
+                if (!newSequences.isEmpty()) {
+                    nextSequence = newSequences.get(0);
+                    AppLogger.log("[SYNC] New sequence(s) added detected! Switching immediately to: " + nextSequence);
+                    sequenceSwitched = true;
+                } else if (currentPlaylistName != null && !serverTitles.contains(currentPlaylistName)) {
+                    if (!serverTitles.isEmpty()) {
+                        nextSequence = serverTitles.get(0);
+                        AppLogger.log("[SYNC] Current sequence removed detected! Switching to fallback: " + nextSequence);
+                        sequenceSwitched = true;
+                    }
+                }
+
+                if (!serverTitles.equals(playlistMaster)) {
+                    playlistMaster.clear();
+                    playlistMaster.addAll(serverTitles);
+                    AppLogger.log("[SYNC] Playlist titles updated: " + serverTitles.size());
+                }
+
+                // ✅ Cleanup orphaned sequence folders (runs on background thread)
+                final List<String> titlesForCleanup = new ArrayList<>(serverTitles);
+                asyncExecutor.submit(() -> {
+                    try {
+                        cleanupOrphanedSequences(titlesForCleanup);
+                    } catch (Exception e) {
+                        AppLogger.log("[SYNC] Orphaned sequence cleanup failed: " + e.getMessage());
+                    }
+                });
+
+                if (sequenceSwitched && nextSequence != null) {
+                    currentPlaylistName = nextSequence;
+                    playlistCurrent[0] = nextSequence;
+                    final String finalNextSeq = nextSequence;
+
+                    Platform.runLater(() -> {
+                        try {
+                            if (playlistPill != null) {
+                                Label textLabel = (Label) playlistPill.getChildren().get(0);
+                                textLabel.setText(finalNextSeq);
+                            }
+
+                            playQueue.clear();
+
+                            loadPlaylistAndStart(
+                                    finalNextSeq,
+                                    globalAlbumHeading,
+                                    globalTitleLabel,
+                                    globalProgressSlider,
+                                    globalLeftTime,
+                                    globalRightTime,
+                                    globalControlsWrapper,
+                                    globalBottomBar,
+                                    globalDownloadLabel,
+                                    true
+                            );
+
+                            playlistViewItems.setAll(
+                                    playlistMaster.stream()
+                                            .filter(s -> !s.equals(playlistCurrent[0]))
+                                            .collect(Collectors.toList()));
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    });
+                    
+                    // Sequence switched, so we skip syncing tracks for the old sequence!
+                    return;
+                }
+                
+                Platform.runLater(() -> {
+                    try {
+                        playlistViewItems.setAll(
+                                playlistMaster.stream()
+                                        .filter(s -> !s.equals(playlistCurrent[0]))
+                                        .collect(Collectors.toList()));
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+            }
+        } catch (Exception e) {
+            AppLogger.log("[SYNC] Playlist title sync failed: " + e.getMessage());
+        }
+
+        // ============================================
+        // TRACK SYNC FOR CURRENT SEQUENCE
+        // ============================================
+        try {
             String currentPlaylist = currentPlaylistName;
             if (currentPlaylist == null)
                 return;
 
             List<PlaylistTrack> serverTracks = apiService.fetchTracksForGenre(currentPlaylist);
-            AppLogger.log("[SYNC] Server tracks count: " + serverTracks.size());
+            AppLogger.log("[SYNC] Server tracks count: " + (serverTracks != null ? serverTracks.size() : 0));
 
             if (serverTracks == null)
                 return;
@@ -772,82 +887,6 @@ public class PlayerController extends Application {
                 }
             } catch (Exception e) {
                 AppLogger.log("[SYNC] Failed to update download sequence count: " + e.getMessage());
-            }
-
-            try {
-                syncAdsFromServer();
-                // ✅ Playlist titles sync
-                try {
-                    List<String> serverTitles = apiService.fetchPlaylistTitles();
-
-                    if (serverTitles != null && !serverTitles.isEmpty()) {
-                        Platform.runLater(() -> {
-                            try {
-                                List<String> newSequences = serverTitles.stream()
-                                        .filter(title -> !playlistMaster.contains(title))
-                                        .collect(Collectors.toList());
-
-                                boolean sequenceSwitched = false;
-                                String nextSequence = null;
-
-//                                This commented code for the Autoswitch the sequence when deduct the new sequence or current sequnece is removed.
-
-                                if (!newSequences.isEmpty()) {
-                                    nextSequence = newSequences.get(0);
-                                    AppLogger.log("[SYNC] New sequence(s) added detected! Switching immediately to: " + nextSequence);
-                                    sequenceSwitched = true;
-                                } else if (currentPlaylistName != null && !serverTitles.contains(currentPlaylistName)) {
-                                    if (!serverTitles.isEmpty()) {
-                                        nextSequence = serverTitles.get(0);
-                                        AppLogger.log("[SYNC] Current sequence removed detected! Switching to fallback: " + nextSequence);
-                                        sequenceSwitched = true;
-                                    }
-                                }
-
-                                if (!serverTitles.equals(playlistMaster)) {
-                                    playlistMaster.clear();
-                                    playlistMaster.addAll(serverTitles);
-                                    AppLogger.log("[SYNC] Playlist titles updated: " + serverTitles.size());
-                                }
-
-                                if (sequenceSwitched && nextSequence != null) {
-                                    currentPlaylistName = nextSequence;
-                                    playlistCurrent[0] = nextSequence;
-
-                                    if (playlistPill != null) {
-                                        Label textLabel = (Label) playlistPill.getChildren().get(0);
-                                        textLabel.setText(nextSequence);
-                                    }
-
-                                    loadPlaylistAndStart(
-                                            nextSequence,
-                                            globalAlbumHeading,
-                                            globalTitleLabel,
-                                            globalProgressSlider,
-                                            globalLeftTime,
-                                            globalRightTime,
-                                            globalControlsWrapper,
-                                            globalBottomBar,
-                                            globalDownloadLabel,
-                                            true
-                                    );
-                                }
-
-                                // Always update view items to reflect current master and current playlist correctly
-                                playlistViewItems.setAll(
-                                        playlistMaster.stream()
-                                                .filter(s -> !s.equals(playlistCurrent[0]))
-                                                .collect(Collectors.toList()));
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        });
-                    }
-                } catch (Exception e) {
-                    AppLogger.log("[SYNC] Playlist title sync failed: " + e.getMessage());
-                }
-            } catch (Exception e) {
-                AppLogger.log("[SYNC] Ad sync failed: " + e.getMessage());
             }
 
         } catch (Exception e) {
@@ -1350,9 +1389,27 @@ public class PlayerController extends Application {
                     // e.g., if downloadSeq = [561, 572, 564], then playQueue[0]=561,
                     // playQueue[1]=572, etc.
                     List<PlaylistTrack> reorderedQueue = new ArrayList<>();
+
+                    String baseDownloadDir = System.getProperty("user.home") + java.io.File.separator + ".scamusica" + java.io.File.separator + "downloads";
+                    String genreFolderPath = baseDownloadDir + java.io.File.separator + playlistName.replaceAll("\\s+", "_");
+
+                    // 1. First add downloaded tracks
                     for (Integer id : downloadSeq) {
                         if (trackMap.containsKey(id)) {
-                            reorderedQueue.add(trackMap.get(id));
+                            java.io.File candidate = new java.io.File(genreFolderPath, "song-" + id + ".dat");
+                            if (candidate.exists() && candidate.length() > 0) {
+                                reorderedQueue.add(trackMap.get(id));
+                            }
+                        }
+                    }
+
+                    // 2. Then add not yet downloaded tracks
+                    for (Integer id : downloadSeq) {
+                        if (trackMap.containsKey(id)) {
+                            java.io.File candidate = new java.io.File(genreFolderPath, "song-" + id + ".dat");
+                            if (!candidate.exists() || candidate.length() == 0) {
+                                reorderedQueue.add(trackMap.get(id));
+                            }
                         }
                     }
 
@@ -1526,36 +1583,7 @@ public class PlayerController extends Application {
                                     AppLogger.log(
                                             "[AUTO-PLAY] Downloaded: " + newGenreCount + "/" + currentGenreTotalFiles);
 
-                                    // ✅ FIX: Add isFirstTrackStarted check
-                                    if (newGenreCount >= 2
-                                            && !isFirstTrackStarted // ← ← ← NEW
-                                            && !vlcPlayer.status().isPlaying()
-                                            && !userPaused
-                                            && (playQueue.isEmpty() || currentTrackIndex == 0)) { // ← ← ← NEW
-
-                                        try {
-                                            if (playQueue.isEmpty()) {
-                                                return;
-                                            }
-
-                                            AppLogger.log("[AutoPlay] 2 songs ready. Starting playback...");
-                                            playTrack(
-                                                    albumHeading,
-                                                    titleLabel,
-                                                    progressSlider,
-                                                    leftTime,
-                                                    rightTime,
-                                                    controlsWrapper,
-                                                    bottomBar,
-                                                    downloadLabel,
-                                                    true);
-
-                                            isFirstTrackStarted = true; // ← ← ← SET FLAG AFTER PLAY
-
-                                        } catch (URISyntaxException e) {
-                                            e.printStackTrace();
-                                        }
-                                    }
+                                    // Autoplay logic removed: loadPlaylistAndStart() already starts playback immediately.
                                 });
                             }
 
@@ -2412,6 +2440,60 @@ public class PlayerController extends Application {
                     }
                 });
             }
+        }
+    }
+
+    /**
+     * Deletes download folders and cache files for sequences that are
+     * no longer assigned to this player (unassigned, deleted, or expired).
+     */
+    private void cleanupOrphanedSequences(List<String> serverTitles) {
+        try {
+            String baseDownloadDir = System.getProperty("user.home")
+                    + File.separator + ".scamusica"
+                    + File.separator + "downloads";
+
+            File baseDir = new File(baseDownloadDir);
+            if (!baseDir.exists() || !baseDir.isDirectory()) return;
+
+            java.util.Set<String> validFolderNames = new java.util.HashSet<>();
+            for (String title : serverTitles) {
+                validFolderNames.add(title.replaceAll("\\s+", "_"));
+            }
+            // Always retain the Default sequence folder so it's ready when falling back
+            validFolderNames.add("Default");
+
+            File[] folders = baseDir.listFiles();
+            if (folders == null) return;
+
+            for (File folder : folders) {
+                if (!folder.isDirectory()) continue;
+
+                String folderName = folder.getName();
+
+                if (!validFolderNames.contains(folderName)) {
+                    AppLogger.log("[CLEANUP] Orphaned sequence folder found: " + folderName);
+
+                    File[] files = folder.listFiles();
+                    int deletedCount = 0;
+                    if (files != null) {
+                        for (File f : files) {
+                            if (f.delete()) {
+                                deletedCount++;
+                            }
+                        }
+                    }
+
+                    boolean folderDeleted = folder.delete();
+                    AppLogger.log("[CLEANUP] Deleted " + deletedCount + " files, folder removed: "
+                            + folderDeleted + " (" + folderName + ")");
+
+                    String sequenceName = folderName.replaceAll("_", " ");
+                    com.musicplayer.scamusica.util.OfflineCache.removeSequenceCache(sequenceName);
+                }
+            }
+        } catch (Exception e) {
+            AppLogger.log("[CLEANUP] Error during orphaned sequence cleanup: " + e.getMessage());
         }
     }
 }

@@ -28,7 +28,6 @@ public class HeartbeatService {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private HeartbeatService() {
-        initHttpClient();
     }
 
     public static HeartbeatService getInstance() {
@@ -38,22 +37,25 @@ public class HeartbeatService {
         return instance;
     }
 
-    private void initHttpClient() {
-        try {
-            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            KeyStore ks = KeyStore.getInstance("JKS");
-            File cacerts = new File(System.getProperty("java.home") + "/lib/security/cacerts");
-            try (FileInputStream fis = new FileInputStream(cacerts)) {
-                ks.load(fis, "changeit".toCharArray());
+    private synchronized HttpClient getClient() {
+        if (client == null) {
+            try {
+                TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                KeyStore ks = KeyStore.getInstance("JKS");
+                File cacerts = new File(System.getProperty("java.home") + "/lib/security/cacerts");
+                try (FileInputStream fis = new FileInputStream(cacerts)) {
+                    ks.load(fis, "changeit".toCharArray());
+                }
+                tmf.init(ks);
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, tmf.getTrustManagers(), null);
+                client = HttpClient.newBuilder().sslContext(sslContext).build();
+            } catch (Exception e) {
+                AppLogger.log("[HeartbeatService] Failed to initialize SSL HttpClient, falling back to default.");
+                client = HttpClient.newHttpClient();
             }
-            tmf.init(ks);
-            SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, tmf.getTrustManagers(), null);
-            client = HttpClient.newBuilder().sslContext(sslContext).build();
-        } catch (Exception e) {
-            AppLogger.log("[HeartbeatService] Failed to initialize SSL HttpClient, falling back to default.");
-            client = HttpClient.newHttpClient();
         }
+        return client;
     }
 
     public void start() {
@@ -103,20 +105,21 @@ public class HeartbeatService {
         String deviceType = osName.contains("win") ? "Windows" : (osName.contains("mac") ? "Mac" : "Raspberry");
 
         try {
-            String requestBody = "{"
+            String url = Utility.BASE_URL.get() + Utility.PLAYER_HEARTBEAT.get();
+            String json = "{"
                     + "\"deviceId\": \"" + deviceId + "\","
                     + "\"deviceType\": \"" + deviceType + "\""
                     + "}";
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(Utility.BASE_URL.get() + Utility.PLAYER_HEARTBEAT.get()))
-                    .timeout(Duration.ofSeconds(10))
+                    .uri(URI.create(url))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + token)
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .timeout(Duration.ofSeconds(10))
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
                     .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = getClient().send(request, HttpResponse.BodyHandlers.ofString());
 
             AppLogger.log("[HeartbeatService] Heartbeat response code: " + response.statusCode() + " body: "
                     + response.body());

@@ -271,4 +271,27 @@ public class OfflineCache {
             return null;
         }
     }
+
+    /**
+     * Removes cached tracks and download sequence JSON files for a given sequence.
+     */
+    public static void removeSequenceCache(String sequenceName) {
+        try {
+            String safeName = safeFileName(sequenceName);
+
+            File tracksFile = new File(getCacheDir(), TRACKS_PREFIX + safeName + ".json");
+            if (tracksFile.exists()) {
+                tracksFile.delete();
+                AppLogger.log("[OfflineCache] Removed cached tracks for: " + sequenceName);
+            }
+
+            File seqFile = new File(getCacheDir(), SEQ_PREFIX + safeName + ".json");
+            if (seqFile.exists()) {
+                seqFile.delete();
+                AppLogger.log("[OfflineCache] Removed cached download sequence for: " + sequenceName);
+            }
+        } catch (Exception e) {
+            AppLogger.log("[OfflineCache] Failed to remove cache for: " + sequenceName + " - " + e.getMessage());
+        }
+    }
 }

@@ -1,11 +1,27 @@
 package com.musicplayer.scamusica.manager;
 
 import com.musicplayer.scamusica.util.AppLogger;
+import java.io.File;
+import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 public class DeviceFingerprint {
+    private static final String CACHE_FILE = System.getProperty("user.home")
+            + File.separator + ".scamusica" + File.separator + "device_id.cache";
+
     public static String getFingerprint() {
+        try {
+            File cache = new File(CACHE_FILE);
+            if (cache.exists() && cache.length() > 0) {
+                String cached = new String(Files.readAllBytes(cache.toPath()), StandardCharsets.UTF_8).trim();
+                if (cached.length() == 64) {
+                    return cached;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
         try {
             AppLogger.log("[FINGERPRINT] Starting device fingerprint generation...");
             
@@ -57,6 +73,14 @@ public class DeviceFingerprint {
             
             String finalId = hex.toString();
             AppLogger.log("[FINGERPRINT] Final Generated Device ID: " + finalId);
+
+            try {
+                File cache = new File(CACHE_FILE);
+                cache.getParentFile().mkdirs();
+                Files.write(cache.toPath(), finalId.getBytes(StandardCharsets.UTF_8));
+            } catch (Exception ignored) {
+            }
+
             return finalId;
 
         } catch (Exception e) {
