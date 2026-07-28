@@ -19,6 +19,7 @@ import javafx.stage.StageStyle;
 import java.util.ResourceBundle;
 import java.util.Locale;
 
+import com.musicplayer.scamusica.service.LogSyncService;
 import com.musicplayer.scamusica.util.AppLogger;
 
 public class Main extends Application {

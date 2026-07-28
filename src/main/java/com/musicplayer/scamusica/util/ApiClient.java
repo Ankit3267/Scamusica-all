@@ -154,57 +154,109 @@ public class ApiClient {
         return true;
     }
 
+    private static final int DOWNLOAD_TIMEOUT = 30000;
+
     public static boolean downloadEncrypted(String urlStr,
                                             Map<String, String> headers,
                                             File outFile,
                                             ProgressCallback callback) {
 
         HttpURLConnection connection = null;
+        String currentUrlStr = urlStr;
+        int redirectCount = 0;
+        final int MAX_REDIRECTS = 5;
 
         try {
-            URL url = new URL(urlStr);
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("GET");
+            while (redirectCount < MAX_REDIRECTS) {
+                URL url = new URL(currentUrlStr);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("Connection", "close");
+                connection.setConnectTimeout(DOWNLOAD_TIMEOUT);
+                connection.setReadTimeout(DOWNLOAD_TIMEOUT);
 
-            if (headers != null) {
-                for (Map.Entry<String, String> entry : headers.entrySet()) {
-                    connection.setRequestProperty(entry.getKey(), entry.getValue());
-                }
-            }
+                connection.setInstanceFollowRedirects(false);
 
-            connection.connect();
-
-            int responseCode = connection.getResponseCode();
-            if (responseCode < 200 || responseCode >= 300) {
-                AppLogger.log("[ApiClient] Error response code: " + responseCode);
-                return false;
-            }
-
-            long contentLength = connection.getContentLengthLong();
-
-            try (InputStream in = connection.getInputStream();
-                 FileOutputStream fos = new FileOutputStream(outFile);
-                 CipherOutputStream cos = CryptoUtil.encrypt(fos)) {
-
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                long total = 0;
-
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    cos.write(buffer, 0, bytesRead);
-                    cos.flush();
-                    total += bytesRead;
-
-                    if (callback != null) {
-                        callback.onProgress(total, contentLength);
+                if (headers != null) {
+                    URL originalUrl = new URL(urlStr);
+                    boolean isSameHost = url.getHost().equalsIgnoreCase(originalUrl.getHost());
+                    for (Map.Entry<String, String> entry : headers.entrySet()) {
+                        if (!isSameHost && "Authorization".equalsIgnoreCase(entry.getKey())) {
+                            continue;
+                        }
+                        connection.setRequestProperty(entry.getKey(), entry.getValue());
                     }
                 }
+
+                connection.connect();
+
+                int responseCode = connection.getResponseCode();
+
+                if (responseCode == HttpURLConnection.HTTP_MOVED_PERM
+                        || responseCode == HttpURLConnection.HTTP_MOVED_TEMP
+                        || responseCode == HttpURLConnection.HTTP_SEE_OTHER
+                        || responseCode == 307
+                        || responseCode == 308) {
+
+                    String location = connection.getHeaderField("Location");
+                    connection.disconnect();
+
+                    if (location == null || location.trim().isEmpty()) {
+                        AppLogger.log("[ApiClient][DOWNLOAD] Redirected with empty Location header");
+                        return false;
+                    }
+
+                    if (location.startsWith("/")) {
+                        URL base = new URL(currentUrlStr);
+                        location = base.getProtocol() + "://" + base.getHost() + (base.getPort() != -1 ? ":" + base.getPort() : "") + location;
+                    }
+
+                    AppLogger.log("[ApiClient][DOWNLOAD] Following redirect (" + responseCode + ") -> " + location);
+                    currentUrlStr = location;
+                    redirectCount++;
+                    continue;
+                }
+
+                if (responseCode < 200 || responseCode >= 300) {
+                    AppLogger.log("[ApiClient][DOWNLOAD] HTTP error " + responseCode + " for URL: " + currentUrlStr);
+                    return false;
+                }
+
+                long contentLength = connection.getContentLengthLong();
+
+                try (InputStream in = connection.getInputStream();
+                     FileOutputStream fos = new FileOutputStream(outFile);
+                     CipherOutputStream cos = CryptoUtil.encrypt(fos)) {
+
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    long total = 0;
+
+                    while ((bytesRead = in.read(buffer)) != -1) {
+                        cos.write(buffer, 0, bytesRead);
+                        cos.flush();
+                        total += bytesRead;
+
+                        if (callback != null) {
+                            callback.onProgress(total, contentLength);
+                        }
+                    }
+
+                    if (contentLength > 0 && total < contentLength) {
+                        AppLogger.log("[ApiClient][DOWNLOAD] Incomplete download: " 
+                            + total + "/" + contentLength + " bytes");
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
-            return true;
+            AppLogger.log("[ApiClient][DOWNLOAD] Too many redirects for: " + urlStr);
+            return false;
 
         } catch (Exception e) {
-            AppLogger.log("[ApiClient] Exception during download: " + e.getMessage());
+            AppLogger.log("[ApiClient][DOWNLOAD] Exception downloading " + urlStr + ": " + e.getMessage());
             e.printStackTrace();
             return false;
 

@@ -1271,8 +1271,13 @@ public class PlayerController extends Application {
             return 0;
         int c = 0;
         for (File f : files) {
-            if (!f.isDirectory() && f.getName().startsWith("song-") && f.getName().endsWith(".dat") && f.length() > 0) {
-                c++;
+            if (!f.isDirectory() && f.getName().startsWith("song-") && f.getName().endsWith(".dat")) {
+                if (f.length() > 10_000) {
+                    c++;
+                } else {
+                    AppLogger.log("[PlayerController] Deleting incomplete file: " + f.getName() + " (" + f.length() + " bytes)");
+                    f.delete();
+                }
             }
         }
         return c;
@@ -1290,8 +1295,13 @@ public class PlayerController extends Application {
                 count += countExistingDownloadedFiles(f);
             } else {
                 String name = f.getName();
-                if (name.startsWith("song-") && name.endsWith(".dat") && f.length() > 0) {
-                    count++;
+                if (name.startsWith("song-") && name.endsWith(".dat")) {
+                    if (f.length() > 10_000) {
+                        count++;
+                    } else {
+                        AppLogger.log("[PlayerController] Deleting incomplete file: " + f.getName() + " (" + f.length() + " bytes)");
+                        f.delete();
+                    }
                 }
             }
         }
@@ -1485,9 +1495,12 @@ public class PlayerController extends Application {
             } else {
                 for (Integer id : downloadSeq) {
                     File candidate = new File(genreFolderPath, "song-" + id + ".dat");
-                    if (!candidate.exists() || candidate.length() == 0) {
+                    if (candidate.exists() && candidate.length() <= 10_000) {
+                        AppLogger.log("[PlayerController] Deleting incomplete file during sequence check: " + candidate.getName() + " (" + candidate.length() + " bytes)");
+                        candidate.delete();
+                    }
+                    if (!candidate.exists() || candidate.length() <= 10_000) {
                         needDownload = true;
-                        break;
                     }
                 }
             }
@@ -1630,6 +1643,13 @@ public class PlayerController extends Application {
                         });
 
                 downloadManager.start();
+                synchronized (playQueue) {
+                    for (PlaylistTrack pt : playQueue) {
+                        if (pt != null && pt.getId() != null && pt.getUrl() != null) {
+                            downloadManager.registerFallbackUrl(pt.getId(), pt.getUrl());
+                        }
+                    }
+                }
                 for (Integer id : downloadSeq) {
                     downloadManager.queueDownload(id);
                 }
@@ -1822,7 +1842,18 @@ public class PlayerController extends Application {
                 return;
             }
 
-            if (encryptedFile.exists()) {
+            if (encryptedFile.exists() && encryptedFile.length() <= 10_000) {
+                AppLogger.log("[PLAYER] Deleting corrupted/incomplete file before playback for song-" + track.getId() + " (" + encryptedFile.length() + " bytes)");
+                encryptedFile.delete();
+                if (downloadManager != null) {
+                    if (track.getUrl() != null) {
+                        downloadManager.registerFallbackUrl(track.getId(), track.getUrl());
+                    }
+                    downloadManager.queueDownload(track.getId());
+                }
+            }
+
+            if (encryptedFile.exists() && encryptedFile.length() > 10_000) {
                 AppLogger.log("[PLAYER] Playing from local file: " + encryptedFile.getAbsolutePath());
                 final String fallbackUrl = safeUrl;
                 asyncExecutor.submit(() -> {
@@ -2062,17 +2093,7 @@ public class PlayerController extends Application {
 
             @Override
             public void error(MediaPlayer mediaPlayer) {
-                AppLogger.log("[PLAYER] VLC encountered an error during playback.");
-                try {
-                    String trackTitle = "Unknown Track";
-                    if (!playQueue.isEmpty() && currentTrackIndex < playQueue.size() && currentTrackIndex >= 0) {
-                        trackTitle = playQueue.get(currentTrackIndex).getTitle();
-                    }
-                    LogSyncService.getInstance().addErrorLog(
-                            "VLC Playback Error", "PlayerController (Track: " + trackTitle + ")");
-                } catch (Exception ex) {
-                    AppLogger.log("[PLAYER] Error logging failed: " + ex.getMessage());
-                }
+                AppLogger.log("[PLAYER] VLC encountered an error during playback (skipped API DB log).");
                 
                 consecutiveErrorCount++;
                 if (consecutiveErrorCount > 3) {
