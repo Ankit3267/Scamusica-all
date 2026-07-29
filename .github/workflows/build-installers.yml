@@ -222,30 +222,30 @@
 
 
 # name: Build Installer (Windows)
-
+# 
 # on:
 #   workflow_dispatch:
-
+# 
 # env:
 #   PROJECT_PATH: .
 #   APP_VERSION: 1.0.0
-
+# 
 # jobs:
 #   build-windows:
 #     name: Build Windows EXE Installer
 #     runs-on: windows-latest
-
+# 
 #     steps:
 #       - name: Checkout sources
 #         uses: actions/checkout@v4
-
+# 
 #       - name: Setup Temurin JDK 17
 #         uses: actions/setup-java@v4
 #         with:
 #           distribution: temurin
 #           java-version: 17
 #           cache: maven
-
+# 
 #       # ── 1. JAR build ─────────────────────────────────────────────────
 #       - name: Build JAR
 #         working-directory: ${{ env.PROJECT_PATH }}
@@ -255,7 +255,7 @@
 #           ./mvnw -B -DskipTests clean compile jar:jar
 #           echo "=== target/ contents ==="
 #           ls -lh target
-
+# 
 #       # ── 2. Custom JRE via jlink ───────────────────────────────────────
 #       - name: Create runtime with jlink
 #         working-directory: ${{ env.PROJECT_PATH }}
@@ -264,7 +264,7 @@
 #           ./mvnw -B javafx:jlink
 #           echo "=== scamusica-runtime created ==="
 #           ls -lh target/scamusica-runtime
-
+# 
 #       # ── 3. SSL certs import ───────────────────────────────────────────
 #       - name: Import SSL certificates
 #         working-directory: ${{ env.PROJECT_PATH }}
@@ -273,23 +273,23 @@
 #           $kt   = "target\scamusica-runtime\bin\keytool.exe"
 #           $ks   = "target\scamusica-runtime\lib\security\cacerts"
 #           $pass = "changeit"
-
+# 
 #           Write-Host "--- Importing API certs ---"
 #           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias api1      -file "certs\api1_fullchain.crt"
 #           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias api2      -file "certs\api2_fullchain.crt"
-
+# 
 #           Write-Host "--- Importing CIS Root CA ---"
 #           & $kt -delete     -alias cis-root  -keystore $ks -storepass $pass -noprompt 2>$null
 #           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias cis-root  -file "certs\ca 9.crt"
-
+# 
 #           Write-Host "--- Importing new certs ---"
 #           & $kt -delete     -alias new-cert-1 -keystore $ks -storepass $pass -noprompt 2>$null
 #           & $kt -delete     -alias new-cert-2 -keystore $ks -storepass $pass -noprompt 2>$null
 #           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias new-cert-1 -file "certs\ca-10.crt"
 #           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias new-cert-2 -file "certs\Fortinet_CA_SSLProxy_new-7.cer"
-
+# 
 #           Write-Host "All certs imported successfully"
-
+# 
 #       # ── 4. VLC download on runner (Linux pe nahi hota isliye yahan) ──
 #       - name: Download and extract VLC for Windows
 #         shell: pwsh
@@ -298,24 +298,24 @@
 #           $vlcUrl     = "https://download.videolan.org/vlc/$vlcVersion/win64/vlc-$vlcVersion-win64.zip"
 #           $zipPath    = "$env:TEMP\vlc.zip"
 #           $extractDir = "$env:TEMP\vlc-extracted"
-
+# 
 #           Write-Host "Downloading VLC $vlcVersion..."
 #           Invoke-WebRequest -Uri $vlcUrl -OutFile $zipPath
-
+# 
 #           Write-Host "Extracting..."
 #           Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-
+# 
 #           # Extracted folder ka naam hoga vlc-3.0.21 — uska content vlc/ mein copy karo
 #           $vlcSourceDir = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1 -ExpandProperty FullName
 #           Write-Host "VLC source dir: $vlcSourceDir"
-
+# 
 #           # Project root mein vlc/ folder banao
 #           New-Item -ItemType Directory -Force -Path "vlc" | Out-Null
 #           Copy-Item -Recurse -Force "$vlcSourceDir\*" "vlc\"
-
+# 
 #           Write-Host "=== vlc/ folder contents ==="
 #           Get-ChildItem "vlc" | Select-Object Name
-
+# 
 #       # ── 5. jpackage → APP_IMAGE ───────────────────────────────────────
 #       - name: Build app-image via Maven jpackage
 #         working-directory: ${{ env.PROJECT_PATH }}
@@ -324,33 +324,33 @@
 #           ./mvnw -B jpackage:jpackage
 #           Write-Host "=== target/ after app-image ==="
 #           Get-ChildItem "target" | Select-Object Name, Attributes
-
+# 
 #       # ── 6. VLC copy into app-image ────────────────────────────────────
 #       - name: Copy VLC into app-image
 #         working-directory: ${{ env.PROJECT_PATH }}
 #         shell: pwsh
 #         run: |
 #           $appImage = "target\Scamusica"
-
+# 
 #           if (-not (Test-Path $appImage)) {
 #             Write-Host "=== DEBUG: target/ mein kya hai ==="
 #             Get-ChildItem "target"
 #             Write-Error "App-image folder 'target\Scamusica' not found!"
 #             exit 1
 #           }
-
+# 
 #           Copy-Item -Recurse -Force "vlc" "$appImage\"
 #           Write-Host "VLC copied into $appImage"
 #           Write-Host "=== App-image contents ==="
 #           Get-ChildItem "$appImage" | Select-Object Name
-
+# 
 #       # ── 7. Final EXE from app-image ───────────────────────────────────
 #       - name: Build final EXE installer
 #         working-directory: ${{ env.PROJECT_PATH }}
 #         shell: pwsh
 #         run: |
 #           New-Item -ItemType Directory -Force -Path "target\final-installer" | Out-Null
-
+# 
 #           jpackage `
 #             --type        exe `
 #             --dest        "target\final-installer" `
@@ -359,11 +359,12 @@
 #             --app-image   "target\Scamusica" `
 #             --win-menu `
 #             --win-shortcut `
-#             --win-dir-chooser
-
+#             --win-dir-chooser `
+#             --win-upgrade-uuid "e72a8c3d-6b1e-4f5a-9c8d-2a1b3c4d5e6f"
+# 
 #           Write-Host "=== Final installer ==="
 #           Get-ChildItem "target\final-installer"
-
+# 
 #       # ── 8. Upload ─────────────────────────────────────────────────────
 #       - name: Upload EXE artifact
 #         uses: actions/upload-artifact@v4
@@ -396,283 +397,120 @@ jobs:
           java-version: 17
           cache: maven
 
-      # ── 1. JAR build ─────────────────────────────────────────────────
       - name: Build JAR
         working-directory: ${{ env.PROJECT_PATH }}
-        shell: bash
         run: |
           chmod +x mvnw || true
-          ./mvnw -B -DskipTests clean compile jar:jar
-          echo "=== target/ contents ==="
+          ./mvnw -B -DskipTests clean package
+
+          echo "📦 Target contents:"
           ls -lh target
 
-      # ── 2. Custom JRE via jlink ───────────────────────────────────────
-      - name: Create runtime with jlink
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: bash
+      - name: Download JavaFX SDK (macOS ARM64)
         run: |
-          ./mvnw -B javafx:jlink
-          echo "=== scamusica-runtime created ==="
+          echo "📥 Downloading JavaFX..."
+          curl -L -o javafx.zip https://download2.gluonhq.com/openjfx/21.0.2/openjfx-21.0.2_osx-aarch64_bin-sdk.zip
+          unzip -q javafx.zip
+          mv javafx-sdk-21.0.2 openjfx
+          echo "📦 JavaFX contents:"
+          ls -lh openjfx/lib
+
+      - name: Create Runtime (jlink)
+        working-directory: ${{ env.PROJECT_PATH }}
+        run: |
+          echo "📦 Creating runtime..."
+          rm -rf target/scamusica-runtime
+
+          JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+          JFX_PATH="./openjfx/lib"
+
+          if [ ! -d "$JFX_PATH" ]; then
+            echo "❌ JavaFX SDK not found at $JFX_PATH"
+            exit 1
+          fi
+
+          rm -f $JFX_PATH/javafx-swt.jar
+
+          jlink \
+            --module-path "$JAVA_HOME/jmods:$JFX_PATH" \
+            --add-modules java.base,java.desktop,java.logging,java.net.http,jdk.crypto.ec,jdk.crypto.cryptoki,javafx.controls,javafx.fxml,javafx.media \
+            --output target/scamusica-runtime \
+            --strip-debug \
+            --no-man-pages \
+            --no-header-files \
+            --compress=2
+
+          cp $JFX_PATH/*.dylib target/scamusica-runtime/lib/
+
+          echo "📦 Runtime created:"
           ls -lh target/scamusica-runtime
 
-      # ── 3. SSL certs import ───────────────────────────────────────────
       - name: Import SSL certificates
         working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
         run: |
-          $kt   = "target\scamusica-runtime\bin\keytool.exe"
-          $ks   = "target\scamusica-runtime\lib\security\cacerts"
-          $pass = "changeit"
+          KEYTOOL=target/scamusica-runtime/bin/keytool
+          CACERTS=target/scamusica-runtime/lib/security/cacerts
+          STOREPASS=changeit
 
-          Write-Host "--- Importing API certs ---"
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias api1      -file "certs\api1_fullchain.crt"
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias api2      -file "certs\api2_fullchain.crt"
+          echo "🧹 Cleaning old certs..."
+          $KEYTOOL -delete -alias cis-root -keystore $CACERTS -storepass $STOREPASS || true
+          $KEYTOOL -delete -alias new-cert-1 -keystore $CACERTS -storepass $STOREPASS || true
+          $KEYTOOL -delete -alias new-cert-2 -keystore $CACERTS -storepass $STOREPASS || true
 
-          Write-Host "--- Importing CIS Root CA ---"
-          & $kt -delete     -alias cis-root  -keystore $ks -storepass $pass -noprompt 2>$null
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias cis-root  -file "certs\ca 9.crt"
+          echo "📥 Importing certs..."
+          if [ -f "certs/ca 9.crt" ]; then
+            $KEYTOOL -importcert -alias cis-root -file "certs/ca 9.crt" -keystore $CACERTS -storepass $STOREPASS -noprompt || true
+          fi
+          if [ -f "certs/ca-10.crt" ]; then
+            $KEYTOOL -importcert -alias new-cert-1 -file "certs/ca-10.crt" -keystore $CACERTS -storepass $STOREPASS -noprompt || true
+          fi
+          if [ -f "certs/Fortinet_CA_SSLProxy_new-7.cer" ]; then
+            $KEYTOOL -importcert -alias new-cert-2 -file "certs/Fortinet_CA_SSLProxy_new-7.cer" -keystore $CACERTS -storepass $STOREPASS -noprompt || true
+          fi
 
-          Write-Host "--- Importing new certs ---"
-          & $kt -delete     -alias new-cert-1 -keystore $ks -storepass $pass -noprompt 2>$null
-          & $kt -delete     -alias new-cert-2 -keystore $ks -storepass $pass -noprompt 2>$null
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias new-cert-1 -file "certs\ca-10.crt"
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias new-cert-2 -file "certs\Fortinet_CA_SSLProxy_new-7.cer"
+          echo "✅ Certificates imported"
 
-          Write-Host "All certs imported successfully"
-
-      # ── 4. VLC download on runner (Linux pe nahi hota isliye yahan) ──
-      - name: Download and extract VLC for Windows
-        shell: pwsh
+      - name: Verify certificates
         run: |
-          $vlcVersion = "3.0.21"
-          $vlcUrl     = "https://download.videolan.org/vlc/$vlcVersion/win64/vlc-$vlcVersion-win64.zip"
-          $zipPath    = "$env:TEMP\vlc.zip"
-          $extractDir = "$env:TEMP\vlc-extracted"
+          keytool -list \
+            -keystore target/scamusica-runtime/lib/security/cacerts \
+            -storepass changeit | grep -E "cis-root|new-cert-1|new-cert-2" || true
 
-          Write-Host "Downloading VLC $vlcVersion..."
-          Invoke-WebRequest -Uri $vlcUrl -OutFile $zipPath
-
-          Write-Host "Extracting..."
-          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-
-          # Extracted folder ka naam hoga vlc-3.0.21 — uska content vlc/ mein copy karo
-          $vlcSourceDir = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1 -ExpandProperty FullName
-          Write-Host "VLC source dir: $vlcSourceDir"
-
-          # Project root mein vlc/ folder banao
-          New-Item -ItemType Directory -Force -Path "vlc" | Out-Null
-          Copy-Item -Recurse -Force "$vlcSourceDir\*" "vlc\"
-
-          Write-Host "=== vlc/ folder contents ==="
-          Get-ChildItem "vlc" | Select-Object Name
-
-      # ── 5. jpackage → APP_IMAGE ───────────────────────────────────────
-      - name: Build app-image via Maven jpackage
+      - name: Package DMG
         working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
         run: |
-          ./mvnw -B jpackage:jpackage
-          Write-Host "=== target/ after app-image ==="
-          Get-ChildItem "target" | Select-Object Name, Attributes
+          JAR_NAME=$(ls target/Scamusica-*.jar | grep -v original | head -1 | xargs basename)
 
-      # ── 6. VLC copy into app-image ────────────────────────────────────
-      - name: Copy VLC into app-image
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
-        run: |
-          $appImage = "target\Scamusica"
-
-          if (-not (Test-Path $appImage)) {
-            Write-Host "=== DEBUG: target/ mein kya hai ==="
-            Get-ChildItem "target"
-            Write-Error "App-image folder 'target\Scamusica' not found!"
+          if [ -z "$JAR_NAME" ]; then
+            echo "❌ JAR not found"
             exit 1
-          }
+          fi
 
-          Copy-Item -Recurse -Force "vlc" "$appImage\"
-          Write-Host "VLC copied into $appImage"
-          Write-Host "=== App-image contents ==="
-          Get-ChildItem "$appImage" | Select-Object Name
+          echo "✅ Using JAR: $JAR_NAME"
 
-      # ── 7. Final EXE from app-image ───────────────────────────────────
-      - name: Build final EXE installer
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "target\final-installer" | Out-Null
+          jpackage \
+            --type dmg \
+            --dest target \
+            --name Scamusica \
+            --app-version "${APP_VERSION}" \
+            --input target \
+            --main-jar "$JAR_NAME" \
+            --main-class com.musicplayer.scamusica.Main \
+            --runtime-image target/scamusica-runtime \
+            --icon src/main/resources/scamusica.icns \
+            --mac-package-name Scamusica \
+            --mac-package-identifier com.scamusica.player \
+            --java-options "-Dhttps.protocols=TLSv1.2,TLSv1.3 -Dprism.order=sw"
 
-          jpackage `
-            --type        exe `
-            --dest        "target\final-installer" `
-            --name        "Scamusica" `
-            --app-version "$env:APP_VERSION" `
-            --app-image   "target\Scamusica" `
-            --win-menu `
-            --win-shortcut `
-            --win-dir-chooser `
-            --win-upgrade-uuid "e72a8c3d-6b1e-4f5a-9c8d-2a1b3c4d5e6f"
+          echo "📦 DMG created:"
+          ls -lh target/*.dmg
 
-          Write-Host "=== Final installer ==="
-          Get-ChildItem "target\final-installer"
-
-      # ── 8. Upload ─────────────────────────────────────────────────────
-      - name: Upload EXE artifact
+      - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: scamusica-windows-${{ env.APP_VERSION }}
-          path: target\final-installer\*.exe
-
-# name: Build Installer (macOS Apple Silicon) 
- 
-# on:
-#   workflow_dispatch:
- 
-# env:
-#   PROJECT_PATH: .
-#   APP_VERSION: 1.0.0
- 
-# jobs:
-#   build-macos-arm:
-#     name: Build macOS ARM64 DMG
-#     runs-on: macos-14
- 
-#     steps:
- 
-#     - name: Checkout sources
-#       uses: actions/checkout@v4
- 
-#     - name: Setup Temurin JDK 17
-#       uses: actions/setup-java@v4
-#       with:
-#         distribution: temurin
-#         java-version: 17
-#         cache: maven
- 
-#     - name: Build JAR
-#       working-directory: ${{ env.PROJECT_PATH }}
-#       run: |
-#         chmod +x mvnw || true
-#         ./mvnw -B -DskipTests clean package
- 
-#         echo "📦 Target contents:"
-#         ls -lh target
- 
-#     - name: Download JavaFX SDK (macOS ARM64)
-#       run: |
-#        echo "📥 Downloading JavaFX..."
- 
-       curl -L -o javafx.zip https://download2.gluonhq.com/openjfx/21.0.2/openjfx-21.0.2_osx-aarch64_bin-sdk.zip
- 
-       unzip javafx.zip
- 
-       mv javafx-sdk-21.0.2 openjfx
- 
-       echo "📦 JavaFX contents:"
-       ls -lh openjfx/lib
- 
-    - name: Create Runtime (jlink)
-      working-directory: ${{ env.PROJECT_PATH }}
-      run: |
-        echo "📦 Creating runtime..."
- 
-        rm -rf target/scamusica-runtime
- 
-        JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
-        JFX_PATH="./openjfx/lib"
- 
-        if [ ! -d "$JFX_PATH" ]; then
-          echo "❌ JavaFX SDK not found at $JFX_PATH"
-          exit 1
-        fi
- 
-        # ❌ remove problematic SWT jar
-        rm -f $JFX_PATH/javafx-swt.jar
- 
-        jlink \
-          --module-path "$JAVA_HOME/jmods:$JFX_PATH" \
-          --add-modules java.base,java.desktop,java.logging,java.net.http,jdk.crypto.ec,jdk.crypto.cryptoki,javafx.controls,javafx.fxml,javafx.media \
-          --output target/scamusica-runtime \
-          --strip-debug \
-          --no-man-pages \
-          --no-header-files \
-         --compress=2
- 
-         # 🔥 CRITICAL FIX
-         cp $JFX_PATH/*.dylib target/scamusica-runtime/lib/
- 
-        echo "📦 Runtime created:"
-        ls -lh target/scamusica-runtime
- 
-    - name: Import SSL certificates
-      working-directory: ${{ env.PROJECT_PATH }}
-      run: |
-        KEYTOOL=target/scamusica-runtime/bin/keytool
-        CACERTS=target/scamusica-runtime/lib/security/cacerts
-        STOREPASS=changeit
- 
-        echo "🧹 Cleaning old certs..."
-        $KEYTOOL -delete -alias cis-root -keystore $CACERTS -storepass $STOREPASS || true
-        $KEYTOOL -delete -alias new-cert-1 -keystore $CACERTS -storepass $STOREPASS || true
-        $KEYTOOL -delete -alias new-cert-2 -keystore $CACERTS -storepass $STOREPASS || true
- 
-        echo "📥 Importing certs..."
- 
-        $KEYTOOL -importcert -alias cis-root \
-          -file "certs/ca 9.crt" \
-          -keystore $CACERTS -storepass $STOREPASS -noprompt
- 
-        $KEYTOOL -importcert -alias new-cert-1 \
-          -file "certs/ca-10.crt" \
-          -keystore $CACERTS -storepass $STOREPASS -noprompt
- 
-        $KEYTOOL -importcert -alias new-cert-2 \
-          -file "certs/Fortinet_CA_SSLProxy_new-7.cer" \
-          -keystore $CACERTS -storepass $STOREPASS -noprompt
- 
-        echo "✅ Certificates imported"
- 
-    - name: Verify certificates
-      run: |
-        keytool -list \
-          -keystore target/scamusica-runtime/lib/security/cacerts \
-          -storepass changeit | grep -E "cis-root|new-cert-1|new-cert-2"
- 
-    - name: Package DMG
-      working-directory: ${{ env.PROJECT_PATH }}
-      run: |
-        # ✅ Safe jar selection
-        JAR_NAME=$(ls target/Scamusica-*.jar | grep -v original | head -1 | xargs basename)
- 
-        if [ -z "$JAR_NAME" ]; then
-          echo "❌ JAR not found"
-          exit 1
-        fi
- 
-        echo "✅ Using JAR: $JAR_NAME"
- 
-#         jpackage \
-#           --type dmg \
-#           --dest target \
-#           --name Scamusica \
-#           --app-version "${APP_VERSION}" \
-#           --input target \
-#           --main-jar "$JAR_NAME" \
-#           --main-class com.musicplayer.scamusica.Main \
-#           --runtime-image target/scamusica-runtime \
-#           --icon src/main/resources/scamusica.icns \
-#           --mac-package-name Scamusica \
-#           --mac-package-identifier com.scamusica.player \
-#           --java-options "-Dhttps.protocols=TLSv1.2,TLSv1.3 -Dprism.order=sw"
- 
-        echo "📦 DMG created:"
-        ls -lh target/*.dmg
- 
-    - name: Upload DMG
-      uses: actions/upload-artifact@v4
-      with:
-        name: scamusica-macos-arm
-        path: target/*.dmg
-        retention-days: 30
+          name: scamusica-macos-arm
+          path: target/*.dmg
+          retention-days: 30
 
 
       
