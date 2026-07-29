@@ -162,6 +162,9 @@
                     <module>com.musicplayer.scamusica/com.musicplayer.scamusica.Main</module>
                     <type>APP_IMAGE</type>
                     <icon>src/main/resources/scamusica.ico</icon>
+                    <winUpgradeUuid>e72a8c3d-6b1e-4f5a-9c8d-2a1b3c4d5e6f</winUpgradeUuid>
+                    <macPackageIdentifier>com.scamusica.player</macPackageIdentifier>
+                    <macPackageName>Scamusica</macPackageName>
                 </configuration>
                   </plugin>
         </plugins>

@@ -359,7 +359,8 @@ jobs:
             --app-image   "target\Scamusica" `
             --win-menu `
             --win-shortcut `
-            --win-dir-chooser
+            --win-dir-chooser `
+            --win-upgrade-uuid "e72a8c3d-6b1e-4f5a-9c8d-2a1b3c4d5e6f"
 
           Write-Host "=== Final installer ==="
           Get-ChildItem "target\final-installer"
@@ -503,6 +504,7 @@ jobs:
 #           --type dmg \
 #           --dest target \
 #           --name Scamusica \
+#           --app-version "${APP_VERSION}" \
 #           --input target \
 #           --main-jar "$JAR_NAME" \
 #           --main-class com.musicplayer.scamusica.Main \
@@ -510,7 +512,7 @@ jobs:
 #           --icon src/main/resources/scamusica.icns \
 #           --mac-package-name Scamusica \
 #           --mac-package-identifier com.scamusica.player \
-#           --java-options "-Dhttps.protocols=TLSv1.2,TLSv1.3, -Dprism.order=sw"
+#           --java-options "-Dhttps.protocols=TLSv1.2,TLSv1.3 -Dprism.order=sw"
  
 #         echo "📦 DMG created:"
 #         ls -lh target/*.dmg

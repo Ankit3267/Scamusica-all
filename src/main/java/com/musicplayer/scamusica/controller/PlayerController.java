@@ -801,6 +801,10 @@ public class PlayerController extends Application {
             if (serverTracks == null)
                 return;
 
+            String baseDownloadDir = System.getProperty("user.home") + File.separator + ".scamusica" + File.separator + "downloads";
+            String genreFolderPath = baseDownloadDir + File.separator + currentPlaylist.replaceAll("\\s+", "_");
+            cleanupRemovedSequenceTracks(new File(genreFolderPath), serverTracks);
+
             List<Integer> serverIds = serverTracks.stream()
                     .map(PlaylistTrack::getId)
                     .collect(Collectors.toList());
@@ -880,6 +884,11 @@ public class PlayerController extends Application {
                     currentGenreTotalFiles = serverTracks.size();
                 }
                 
+                int existingInGenre = countExistingInGenreFolder(genreFolderPath);
+                currentGenreDownloadedCount.set(existingInGenre);
+
+                recomputeGlobalCountAndUpdateUI();
+
                 if (globalDownloadLabel != null) {
                     Platform.runLater(() -> {
                         updateGenreDownloadLabel(globalDownloadLabel);
@@ -1257,6 +1266,46 @@ public class PlayerController extends Application {
         }
     }
 
+    /**
+     * Deletes physical .dat files in genreDir whose song IDs are no longer present
+     * in validTracks (i.e. removed from sequence in Admin panel).
+     */
+    private void cleanupRemovedSequenceTracks(File genreDir, List<PlaylistTrack> validTracks) {
+        if (genreDir == null || !genreDir.exists() || !genreDir.isDirectory()) return;
+        if (validTracks == null || validTracks.isEmpty()) return; // Safety: skip if track list unavailable
+
+        try {
+            Set<Integer> validIds = validTracks.stream()
+                    .map(PlaylistTrack::getId)
+                    .collect(Collectors.toSet());
+
+            File[] files = genreDir.listFiles();
+            if (files == null) return;
+
+            int deletedCount = 0;
+            for (File f : files) {
+                if (!f.isDirectory() && f.getName().startsWith("song-") && f.getName().endsWith(".dat")) {
+                    try {
+                        String idStr = f.getName().substring(5, f.getName().length() - 4);
+                        int songId = Integer.parseInt(idStr);
+                        if (!validIds.contains(songId)) {
+                            if (f.delete()) {
+                                deletedCount++;
+                                AppLogger.log("[CLEANUP] Removed deleted track file: " + f.getName() + " from " + genreDir.getName());
+                            }
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+            if (deletedCount > 0) {
+                AppLogger.log("[CLEANUP] Total removed track files deleted from " + genreDir.getName() + ": " + deletedCount);
+            }
+        } catch (Exception e) {
+            AppLogger.log("[CLEANUP] Error during removed sequence tracks cleanup: " + e.getMessage());
+        }
+    }
+
     private void hideDropdown(VBox dropdownCard) {
         dropdownCard.setVisible(false);
         dropdownCard.setManaged(false);
@@ -1372,6 +1421,7 @@ public class PlayerController extends Application {
         stopPlayback(progressSlider, leftTime, rightTime, controlsWrapper, downloadLabel);
 
         playQueue.clear();
+        lastServerIds.clear();
         currentTrackIndex = 0;
         isFirstTrackStarted = false;
 
@@ -1481,6 +1531,8 @@ public class PlayerController extends Application {
                 AppLogger.log("[PlayerController] Genre folder created: " + created + " at " + genreFolderPath);
             }
             genreDir.setWritable(true, false);
+
+            cleanupRemovedSequenceTracks(genreDir, fetchedTracks);
 
             int existingInGenre = countExistingInGenreFolder(genreFolderPath);
             currentGenreDownloadedCount.set(existingInGenre);
