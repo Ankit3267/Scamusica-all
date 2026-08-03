@@ -34,32 +34,48 @@ public class Main extends Application {
         String vlcPath = appDir + java.io.File.separator + "vlc";
         System.setProperty("jna.library.path", vlcPath);
 
-        Platform.runLater(() -> {
+        // 2. Run heavy initialization on a background thread so the splash
+        //    has time to render before we proceed to the main UI.
+        new Thread(() -> {
             try {
-                // 3. Do normal startup
+                // Pre-load session data off the FX thread
                 String savedLang = SessionManager.getLanguage();
-                LanguageManager.setLanguage(savedLang != null ? savedLang : "en");
+                String langToUse = savedLang != null ? savedLang : "en";
+                boolean isLoggedIn = SessionManager.isUserLoggedIn();
 
-                if (SessionManager.isUserLoggedIn()) {
-                    System.out.println("Auto-login using saved token");
-                    new PlayerController().start(primaryStage);
-                } else {
-                    CodeVerificationController codeVerificationController = new CodeVerificationController();
-                    codeVerificationController.start(primaryStage);
-                }
+                // Switch back to FX thread to build & show the real UI
+                Platform.runLater(() -> {
+                    try {
+                        LanguageManager.setLanguage(langToUse);
+
+                        if (isLoggedIn) {
+                            System.out.println("Auto-login using saved token");
+                            new PlayerController().start(primaryStage);
+                        } else {
+                            CodeVerificationController codeVerificationController = new CodeVerificationController();
+                            codeVerificationController.start(primaryStage);
+                        }
+                    } catch (Exception e) {
+                        AppLogger.log("[Main] Failed to start application: " + e.getMessage());
+                        e.printStackTrace();
+                    } finally {
+                        // 3. Close splash after real UI is shown
+                        splashStage.close();
+                    }
+                });
             } catch (Exception e) {
-                AppLogger.log("[Main] Failed to start application: " + e.getMessage());
+                AppLogger.log("[Main] Background init failed: " + e.getMessage());
                 e.printStackTrace();
-            } finally {
-                // 4. Close splash
-                splashStage.close();
+                Platform.runLater(splashStage::close);
             }
-        });
+        }, "Splash-Init-Thread").start();
     }
 
     private Stage createSplashStage() {
         Stage splashStage = new Stage();
-        splashStage.initStyle(StageStyle.UNDECORATED);
+        // FIX: Only call initStyle() ONCE. TRANSPARENT already includes UNDECORATED behavior.
+        // Calling initStyle() twice throws IllegalStateException on most packaged JREs,
+        // causing the window to remain opaque/black on client devices.
         splashStage.initStyle(StageStyle.TRANSPARENT);
 
         VBox root = new VBox(20);
@@ -69,13 +85,23 @@ public class Main extends Application {
                       "-fx-border-color: #333333; -fx-border-width: 1px; -fx-background-radius: 10px; -fx-border-radius: 10px;");
         root.setPrefSize(400, 300);
 
+        // FIX: Use getResource().toExternalForm() instead of getResourceAsStream().
+        // getResourceAsStream("/images/logo.png") returns null when running as a
+        // Java module (packaged via jpackage) because the resource package isn't
+        // opened in module-info.java. getResource() works consistently in both
+        // classpath mode (IntelliJ) and modular mode (client devices).
         try {
-            ImageView logoView = new ImageView(new Image(getClass().getResourceAsStream("/images/logo.png")));
-            logoView.setFitWidth(150);
-            logoView.setPreserveRatio(true);
-            root.getChildren().add(logoView);
+            java.net.URL logoUrl = getClass().getResource("/images/logo.png");
+            if (logoUrl != null) {
+                ImageView logoView = new ImageView(new Image(logoUrl.toExternalForm()));
+                logoView.setFitWidth(150);
+                logoView.setPreserveRatio(true);
+                root.getChildren().add(logoView);
+            } else {
+                AppLogger.log("[Main] logo.png not found in resources (getResource returned null)");
+            }
         } catch (Exception e) {
-            AppLogger.log("[Main] Could not load logo for splash screen.");
+            AppLogger.log("[Main] Could not load logo for splash screen: " + e.getMessage());
         }
 
         ProgressIndicator spinner = new ProgressIndicator();

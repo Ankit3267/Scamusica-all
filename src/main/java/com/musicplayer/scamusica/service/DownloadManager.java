@@ -7,7 +7,9 @@ import com.musicplayer.scamusica.util.AppLogger;
 import com.musicplayer.scamusica.util.Utility;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
@@ -42,6 +44,8 @@ public class DownloadManager {
     private static final long MIN_VALID_FILE_SIZE = 10_000; // 10KB
     private final Map<Integer, Integer> retryCounts = new ConcurrentHashMap<>();
     private final Map<Integer, String> fallbackUrlMap = new ConcurrentHashMap<>();
+    private final Set<Integer> failedDownloads = ConcurrentHashMap.newKeySet();
+    private ScheduledExecutorService retryScheduler;
 
     private final DownloadListener listener;
     private final String downloadFolderPath;
@@ -67,10 +71,14 @@ public class DownloadManager {
     public void start() {
         cancelled = false;
         executor.submit(this::runWorker);
+        startPeriodicRetry();
     }
 
     public void stop() {
         cancelled = true;
+        if (retryScheduler != null && !retryScheduler.isShutdown()) {
+            retryScheduler.shutdownNow();
+        }
         if (executor != null && !executor.isShutdown()) {
             executor.shutdownNow();
             try {
@@ -168,7 +176,8 @@ public class DownloadManager {
                         downloadQueue.offer(id);
                     }
                 } else {
-                    AppLogger.log("[DOWNLOAD][FAIL] id=" + id + " after " + attempts + " attempts");
+                    AppLogger.log("[DOWNLOAD][FAIL] id=" + id + " after " + attempts + " attempts, will retry later");
+                    failedDownloads.add(id);
                     if (listener != null) listener.onDownloadFailed(id, new RuntimeException("Incomplete download, file too small"));
                     retryCounts.remove(id);
                     activeDownloads.remove(id);
@@ -191,10 +200,57 @@ public class DownloadManager {
                     downloadQueue.offer(id);
                 }
             } else {
+                failedDownloads.add(id);
                 if (listener != null) listener.onDownloadFailed(id, ex);
                 retryCounts.remove(id);
                 activeDownloads.remove(id);
             }
         }
+    }
+
+    /**
+     * Starts a periodic scheduler that retries all permanently failed downloads
+     * every 10 minutes. This handles temporary server/CDN issues (e.g. 403s)
+     * that resolve themselves after some time.
+     */
+    private void startPeriodicRetry() {
+        retryScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "DownloadRetry-Thread");
+            t.setDaemon(true);
+            return t;
+        });
+
+        retryScheduler.scheduleAtFixedRate(() -> {
+            if (cancelled || failedDownloads.isEmpty()) return;
+
+            List<Integer> toRetry = new ArrayList<>(failedDownloads);
+            AppLogger.log("[DOWNLOAD][PERIODIC-RETRY] Re-queuing " + toRetry.size() + " previously failed downloads");
+
+            for (Integer id : toRetry) {
+                if (cancelled) break;
+
+                // Check if the file was downloaded in the meantime
+                File outFile = new File(downloadFolderPath, "song-" + id + ".dat");
+                if (outFile.exists() && outFile.length() > MIN_VALID_FILE_SIZE) {
+                    failedDownloads.remove(id);
+                    AppLogger.log("[DOWNLOAD][PERIODIC-RETRY] Already downloaded: " + id);
+                    continue;
+                }
+
+                // Reset retry count and re-queue
+                failedDownloads.remove(id);
+                retryCounts.remove(id);
+                activeDownloads.remove(id);
+                queueDownload(id);
+            }
+        }, 10, 10, TimeUnit.MINUTES);
+    }
+
+    /**
+     * Returns the number of songs that have permanently failed and are
+     * waiting for the next periodic retry cycle.
+     */
+    public int getFailedCount() {
+        return failedDownloads.size();
     }
 }

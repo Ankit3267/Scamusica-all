@@ -369,15 +369,21 @@ public class PlaylistApiService {
         }
 
         String title;
-        if (songObj.has("file") && !songObj.get("file").isJsonNull()) {
+        if (songObj.has("title") && !songObj.get("title").isJsonNull() && !songObj.get("title").getAsString().trim().isEmpty()) {
+            title = songObj.get("title").getAsString();
+        } else if (songObj.has("file") && !songObj.get("file").isJsonNull()) {
             String fileName = songObj.get("file").getAsString();
             title = fileName.endsWith(".mp3")
                     ? fileName.substring(0, fileName.length() - 4)
                     : fileName;
-        } else if (songObj.has("title") && !songObj.get("title").isJsonNull()) {
-            title = songObj.get("title").getAsString();
         } else {
             title = "Unknown Title";
+        }
+
+        if (songObj.has("artist") && !songObj.get("artist").isJsonNull() && !songObj.get("artist").getAsString().trim().isEmpty()) {
+            title = title + " - " + songObj.get("artist").getAsString();
+        } else if (songObj.has("artist_name") && !songObj.get("artist_name").isJsonNull() && !songObj.get("artist_name").getAsString().trim().isEmpty()) {
+            title = title + " - " + songObj.get("artist_name").getAsString();
         }
 
         String filePath;
