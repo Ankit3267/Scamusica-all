@@ -21,48 +21,47 @@ public class ImageFormatConverter {
         String trimmed = fullUrlOrPath.trim();
         String lower = trimmed.toLowerCase(Locale.ROOT);
 
-        if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+        // Known JavaFX-compatible formats — return as-is
+        if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                || lower.endsWith(".bmp") || lower.endsWith(".gif")) {
             return trimmed;
         }
 
-        if (!lower.endsWith(".webp")) {
-            return trimmed;
-        }
-
+        // For .webp URLs OR URLs with unknown/missing extensions (e.g., CloudFront
+        // paths like /images/abc123), attempt to download and convert via javax.imageio
+        // which has the TwelveMonkeys WebP reader registered.
         try {
             String tmpDir = System.getProperty("java.io.tmpdir");
             File cacheDir = new File(tmpDir, CACHE_DIR_NAME);
             if (!cacheDir.exists() && !cacheDir.mkdirs()) {
-                System.out.println("[ImageFormatConverter] Failed to create cache dir: " + cacheDir.getAbsolutePath());
+                AppLogger.log("[ImageFormatConverter] Failed to create cache dir: " + cacheDir.getAbsolutePath());
             }
 
             String hash = sha1(trimmed);
             File pngFile = new File(cacheDir, hash + ".png");
 
-            if (pngFile.exists()) {
-                System.out.println("[ImageFormatConverter] Using cached PNG: " + pngFile.getAbsolutePath());
+            if (pngFile.exists() && pngFile.length() > 0) {
                 return pngFile.toURI().toString();
             }
 
-            System.out.println("[ImageFormatConverter] Converting WebP to PNG: " + trimmed);
+            AppLogger.log("[ImageFormatConverter] Converting image to PNG: " + trimmed);
 
             URL url = new URL(trimmed);
             try (InputStream in = url.openStream()) {
                 BufferedImage input = ImageIO.read(in);
 
                 if (input == null) {
-                    System.out.println("[ImageFormatConverter] ImageIO.read returned null for: " + trimmed);
+                    AppLogger.log("[ImageFormatConverter] ImageIO.read returned null for: " + trimmed);
                     return trimmed;
                 }
 
                 ImageIO.write(input, "png", pngFile);
-                System.out.println("[ImageFormatConverter] Converted & cached at: " + pngFile.getAbsolutePath());
+                AppLogger.log("[ImageFormatConverter] Converted & cached at: " + pngFile.getAbsolutePath());
 
                 return pngFile.toURI().toString();
             }
         } catch (Exception e) {
-            System.out.println("[ImageFormatConverter] Failed to convert WebP image: " + fullUrlOrPath);
-            e.printStackTrace();
+            AppLogger.log("[ImageFormatConverter] Failed to convert image: " + fullUrlOrPath + " — " + e.getMessage());
             return fullUrlOrPath;
         }
     }

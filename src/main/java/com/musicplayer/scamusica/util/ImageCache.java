@@ -55,15 +55,24 @@ public class ImageCache {
             return null;
         }
 
+        // Convert WebP URLs to PNG via ImageFormatConverter before loading.
+        // JavaFX's Image class does NOT support WebP natively — it only handles
+        // PNG, JPG, BMP, and GIF. Without this conversion, WebP album images
+        // silently fail (Image.isError() == true) and the cover area stays blank.
+        String effectiveUrl = ImageFormatConverter.ensurePngImage(imageUrl);
+        if (effectiveUrl == null || effectiveUrl.trim().isEmpty()) {
+            effectiveUrl = imageUrl; // fallback to original
+        }
+
         synchronized (memoryCache) {
             Image cachedImage = memoryCache.get(imageUrl);
-            if (cachedImage != null) {
+            if (cachedImage != null && !cachedImage.isError()) {
                 return cachedImage;
             }
         }
 
         try {
-            File imageFile = new File(getImagesDir(), getFilenameFromUrl(imageUrl));
+            File imageFile = new File(getImagesDir(), getFilenameFromUrl(effectiveUrl));
 
             // If the file exists on disk, load it with reduced size to save memory
             if (imageFile.exists() && imageFile.length() > 0) {
@@ -71,17 +80,23 @@ public class ImageCache {
                 try (InputStream in = new FileInputStream(imageFile)) {
                     // 400x400 limit saves memory footprint
                     Image img = new Image(in, 400, 400, true, true);
-                    synchronized (memoryCache) {
-                        memoryCache.put(imageUrl, img);
+                    if (img.isError()) {
+                        AppLogger.log("[ImageCache] Cached image has error, deleting: " + imageFile.getAbsolutePath());
+                        imageFile.delete();
+                        // Fall through to re-download
+                    } else {
+                        synchronized (memoryCache) {
+                            memoryCache.put(imageUrl, img);
+                        }
+                        return img;
                     }
-                    return img;
                 }
             }
 
             // Otherwise, download it, save to disk, and return
-            if (imageUrl.startsWith("http")) {
-                AppLogger.log("[ImageCache] Downloading image: " + imageUrl);
-                HttpURLConnection connection = (HttpURLConnection) new URL(imageUrl).openConnection();
+            if (effectiveUrl.startsWith("http")) {
+                AppLogger.log("[ImageCache] Downloading image: " + effectiveUrl);
+                HttpURLConnection connection = (HttpURLConnection) new URL(effectiveUrl).openConnection();
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0");
                 connection.setRequestProperty("Connection", "close");
                 connection.setConnectTimeout(5000);
@@ -101,13 +116,24 @@ public class ImageCache {
                 // Read from the newly saved file with reduced size
                 try (InputStream in = new FileInputStream(imageFile)) {
                     Image img = new Image(in, 400, 400, true, true);
+                    if (img.isError()) {
+                        AppLogger.log("[ImageCache] Downloaded image has decode error for: " + effectiveUrl
+                                + " — " + img.getException());
+                        return null;
+                    }
                     synchronized (memoryCache) {
                         memoryCache.put(imageUrl, img);
                     }
                     return img;
                 }
             } else {
-                Image img = new Image(imageUrl, 400, 400, true, true);
+                // Local file URL (e.g., file:// from ImageFormatConverter)
+                Image img = new Image(effectiveUrl, 400, 400, true, true);
+                if (img.isError()) {
+                    AppLogger.log("[ImageCache] Local image has decode error: " + effectiveUrl
+                            + " — " + img.getException());
+                    return null;
+                }
                 synchronized (memoryCache) {
                     memoryCache.put(imageUrl, img);
                 }
@@ -116,12 +142,18 @@ public class ImageCache {
 
         } catch (Exception e) {
             AppLogger.log("[ImageCache] Error loading image: " + e.getMessage());
-            // Fallback to direct loading
-            Image img = new Image(imageUrl, 400, 400, true, true);
-            synchronized (memoryCache) {
-                memoryCache.put(imageUrl, img);
+            // Last resort fallback — try direct JavaFX load
+            try {
+                Image img = new Image(effectiveUrl, 400, 400, true, true);
+                if (!img.isError()) {
+                    synchronized (memoryCache) {
+                        memoryCache.put(imageUrl, img);
+                    }
+                    return img;
+                }
+            } catch (Exception ignored) {
             }
-            return img;
+            return null;
         }
     }
 

@@ -93,6 +93,7 @@ public class PlayerController extends Application {
 
     private ImageView albumImageView;
     private String currentAlbumImgUrl = null;
+    private Image defaultAlbumImage;
 
     private final List<String> tempPlaylist = Arrays.asList(
             "Secuencias-Estilos-playlist",
@@ -241,6 +242,7 @@ public class PlayerController extends Application {
 
         ImageView img = albumUtil.createAlbumImage(getClass());
         albumImageView = img;
+        defaultAlbumImage = img.getImage();
         albumUtil.applyClip(img);
         HBox songsBox = albumUtil.createSongsBox();
 
@@ -1503,18 +1505,22 @@ public class PlayerController extends Application {
                 if (firstImgUrl != null && !firstImgUrl.trim().isEmpty()) {
                     if (!firstImgUrl.equals(currentAlbumImgUrl)) {
                         currentAlbumImgUrl = firstImgUrl;
-                        Platform.runLater(() -> albumImageView.setImage(null));
+                        Platform.runLater(() -> albumImageView.setImage(defaultAlbumImage));
                         asyncExecutor.submit(() -> {
                             try {
                                 Image image = com.musicplayer.scamusica.util.ImageCache.getImage(firstImgUrl);
-                                Platform.runLater(() -> albumImageView.setImage(image));
+                                Platform.runLater(() -> {
+                                    if (image != null) {
+                                        albumImageView.setImage(image);
+                                    }
+                                });
                             } catch (Exception ignored) {
                             }
                         });
                     }
                 } else {
                     currentAlbumImgUrl = null;
-                    Platform.runLater(() -> albumImageView.setImage(null));
+                    Platform.runLater(() -> albumImageView.setImage(defaultAlbumImage));
                 }
             }
 
@@ -1648,7 +1654,27 @@ public class PlayerController extends Application {
                                     AppLogger.log(
                                             "[AUTO-PLAY] Downloaded: " + newGenreCount + "/" + currentGenreTotalFiles);
 
-                                    // Autoplay logic removed: loadPlaylistAndStart() already starts playback immediately.
+                                    if (vlcPlayer != null && !vlcPlayer.status().isPlaying() && !userPaused) {
+                                        if (consecutiveErrorCount > 3 || newGenreCount >= 2) {
+                                            try {
+                                                AppLogger.log("[AUTO-PLAY] Resuming playback after downloads.");
+                                                consecutiveErrorCount = 0;
+                                                playTrack(
+                                                        albumHeading,
+                                                        titleLabel,
+                                                        progressSlider,
+                                                        leftTime,
+                                                        rightTime,
+                                                        controlsWrapper,
+                                                        bottomBar,
+                                                        downloadLabel,
+                                                        true
+                                                );
+                                            } catch (Exception e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                    }
                                 });
                             }
 
@@ -1815,11 +1841,15 @@ public class PlayerController extends Application {
             if (albumImgUrl != null && !albumImgUrl.trim().isEmpty()) {
                 if (!albumImgUrl.equals(currentAlbumImgUrl)) {
                     currentAlbumImgUrl = albumImgUrl;
-                    albumImageView.setImage(null);
+                    Platform.runLater(() -> albumImageView.setImage(defaultAlbumImage));
                     asyncExecutor.submit(() -> {
                         try {
                             Image image = com.musicplayer.scamusica.util.ImageCache.getImage(albumImgUrl);
-                            Platform.runLater(() -> albumImageView.setImage(image));
+                            Platform.runLater(() -> {
+                                if (image != null) {
+                                    albumImageView.setImage(image);
+                                }
+                            });
                         } catch (Exception ex) {
                             ex.printStackTrace();
                         }
@@ -1827,7 +1857,7 @@ public class PlayerController extends Application {
                 }
             } else {
                 currentAlbumImgUrl = null;
-                albumImageView.setImage(null);
+                Platform.runLater(() -> albumImageView.setImage(defaultAlbumImage));
             }
         }
 
