@@ -29,42 +29,47 @@ public class LeavingPopup {
      * @param parentStage The parent stage to which this popup will be modal.
      * @param callback    The callback to handle user's response.
      */
-    public void show(Stage parentStage, Callback callback) {
+    public void show(Stage parentStage, String title, String subtitle, Callback callback) {
         StackPane overlayPane = new StackPane();
         overlayPane.setStyle("-fx-background-color: rgba(30,30,30,0.22);");
 
-        VBox popup = new VBox(24);
-        popup.setPrefWidth(370);
-        popup.setPrefHeight(155);
+        VBox popup = new VBox(12);
+        popup.setPrefWidth(480);
+        popup.setPrefHeight(165);
         popup.setAlignment(Pos.CENTER);
         popup.setStyle(
                 "-fx-background-color: linear-gradient(to bottom, #ffffff, #8AB5CA);" +
                         "-fx-border-width: 0;"
         );
 
-        Label heading = new Label();
-        heading.textProperty().bind(LanguageManager.createStringBinding("label.leaving"));
+        Label heading = new Label(title);
         heading.setAlignment(Pos.CENTER);
-        heading.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #2c2c2c; -fx-padding: 0 0 10 0;");
+        heading.setWrapText(true);
+        heading.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+        heading.setStyle("-fx-font-size: 26px; -fx-font-weight: bold; -fx-text-fill: #2c2c2c; -fx-padding: 0 10 2 10;");
+
+        Label subHeading = new Label(subtitle);
+        subHeading.setAlignment(Pos.CENTER);
+        subHeading.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #800080; -fx-padding: 0 0 10 0;");
 
         Button yesButton = new Button();
         yesButton.textProperty().bind(LanguageManager.createStringBinding("button.yes"));
         yesButton.setStyle("-fx-background-color: #222222; -fx-background-radius: 8;"
-                + "-fx-text-fill: white; -fx-font-size: 16px; -fx-font-weight: bold; -fx-padding: 5 34 5 34;");
+                + "-fx-text-fill: white; -fx-font-size: 16px; -fx-font-weight: bold; -fx-padding: 5 34 5 34; -fx-cursor: hand;");
         Button noButton = new Button();
         noButton.textProperty().bind(LanguageManager.createStringBinding("button.no"));
         noButton.setStyle("-fx-background-color: linear-gradient(to bottom, #ffffff, #8AB5CA);  " +
                 "-fx-background-radius: 8;"
-                + "-fx-text-fill: black; -fx-font-size: 16px; -fx-font-weight: bold; -fx-padding: 5 34 5 34;");
+                + "-fx-text-fill: black; -fx-font-size: 16px; -fx-font-weight: bold; -fx-padding: 5 34 5 34; -fx-cursor: hand;");
 
         HBox buttons = new HBox(18, yesButton, noButton);
         buttons.setAlignment(Pos.CENTER);
 
-        popup.getChildren().addAll(heading, buttons);
+        popup.getChildren().addAll(heading, subHeading, buttons);
 
         overlayPane.getChildren().add(popup);
 
-        Scene popupScene = new Scene(overlayPane, 390, 170);
+        Scene popupScene = new Scene(overlayPane, 500, 180);
         Stage popupStage = new Stage();
         popupStage.initModality(Modality.WINDOW_MODAL);
         popupStage.initOwner(parentStage);

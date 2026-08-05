@@ -139,6 +139,11 @@ public class AdScheduler {
     }
 
     private boolean isAdActive(Ad ad, LocalDate today) {
+        // Skip ads that are not active
+        if (ad.getStatus() == null || !"active".equalsIgnoreCase(ad.getStatus())) {
+            return false;
+        }
+
         if (ad.getStartDate() == null || ad.getEndDate() == null) {
             return false;
         }

@@ -78,6 +78,20 @@ public class HeartbeatService {
                 AppLogger.log("[HeartbeatService] Error in heartbeat task: " + e.getMessage());
             }
         }, 0, 15, TimeUnit.MINUTES);
+
+        // Also trigger immediately when network comes online
+        NetworkMonitor.getInstance().onlineProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal && scheduler != null && !scheduler.isShutdown()) {
+                scheduler.execute(() -> {
+                    try {
+                        AppLogger.log("[HeartbeatService] Network came online, triggering immediate heartbeat.");
+                        sendHeartbeat();
+                    } catch (Exception e) {
+                        AppLogger.log("[HeartbeatService] Error in immediate heartbeat task: " + e.getMessage());
+                    }
+                });
+            }
+        });
     }
 
     public void stop() {

@@ -189,37 +189,7 @@ public class PlayerController extends Application {
         sidebarUtil.addSidebarLogic(sidebarButtons, headphonesButton);
         VBox sidebarTop = sidebarUtil.createSidebarTop(headphonesButton);
         FontIcon settingsIcon = sidebarUtil.createSettingsIcon(primaryStage, () -> {
-            running = false;
-            if (vlcPlayer != null) {
-                try {
-                    vlcPlayer.controls().stop();
-                } catch (Exception ignored) {
-                }
-            }
-            if (queueWorkerThread != null) {
-                queueWorkerThread.interrupt();
-            }
-            if (schedular != null) {
-                schedular.shutdownNow();
-            }
-            if (adScheduler != null) {
-                adScheduler.stop();
-            }
-            if (adPlayer != null) {
-                adPlayer.stop();
-            }
-            if (downloadManager != null) {
-                try {
-                    downloadManager.stop();
-                } catch (Exception ignored) {
-                }
-            }
-            if (asyncExecutor != null) {
-                asyncExecutor.shutdownNow();
-            }
-            MemoryWatchdog.getInstance().stop();
-            HeartbeatService.getInstance().stop();
-            LogSyncService.getInstance().stop();
+            shutdownApp();
         });
         VBox sidebar = sidebarUtil.createSidebar(sidebarTop, settingsIcon);
 
@@ -448,57 +418,23 @@ public class PlayerController extends Application {
         primaryStage.setMinHeight(650);
 
         primaryStage.setOnCloseRequest(event -> {
-            AppLogger.log("[APP] Closing application");
-            AppLogger.close();
+            event.consume();
+            String lang = com.musicplayer.scamusica.manager.LanguageManager.getLangCode();
+            String title = "es".equals(lang) ? "¿Está seguro de cerrar la App?" : "Are you sure you want to close the App?";
+            String subtitle = "es".equals(lang) ? "Se detendrá la reproducción de música" : "Music playback will stop";
 
-            running = false;
-
-            if (queueWorkerThread != null) {
-                queueWorkerThread.interrupt();
-            }
-
-            if (schedular != null) {
-                schedular.shutdownNow();
-            }
-
-            if (vlcPlayer != null) {
-                try {
-                    vlcPlayer.controls().stop();
-                } catch (Exception ignored) {
+            new LeavingPopup().show(primaryStage, title, subtitle, new LeavingPopup.Callback() {
+                @Override
+                public void onYes() {
+                    shutdownApp();
+                    javafx.application.Platform.exit();
+                    System.exit(0);
                 }
-            }
 
-            if (downloadManager != null) {
-                try {
-                    downloadManager.stop();
-                } catch (Exception ignored) {
+                @Override
+                public void onNo() {
                 }
-            }
-
-            if (adScheduler != null) {
-                adScheduler.stop();
-            }
-            if (adPlayer != null) {
-                adPlayer.stop();
-            }
-
-            NetworkMonitor.getInstance().stop();
-            MemoryWatchdog.getInstance().stop();
-            HeartbeatService.getInstance().stop();
-            LogSyncService.getInstance().stop();
-
-            // ✅ VU Meter cleanup
-            if (ledVuMeter != null) {
-                ledVuMeter.stop();
-            }
-            if (audioCallbackHandler != null) {
-                audioCallbackHandler.close();
-            }
-
-            Platform.exit();
-
-            System.exit(0);
-
+            });
         });
 
         primaryStage.show();
@@ -1237,13 +1173,19 @@ public class PlayerController extends Application {
         PlaylistApiService api = apiService;
         List<Ad> serverAds = api.fetchAds();
 
-        if (serverAds != null && !serverAds.isEmpty()) {
+        if (serverAds != null) {
             allAds = new ArrayList<>(serverAds);
             if (adScheduler != null) {
                 adScheduler.updateAds(allAds);
             }
+            if (adPlayer != null && !adPlayer.isPlayingAd()) {
+                adPlayer.clearQueue();
+            }
             OfflineCache.saveAdSchedule(allAds);
-            AdDownloadManager.downloadAllAds(allAds);
+            if (!allAds.isEmpty()) {
+                AdDownloadManager.downloadAllAds(allAds);
+            }
+            AdDownloadManager.cleanupOrphanedAdFiles(allAds);
             AppLogger.log("[SYNC] Ads updated: " + allAds.size() + " ads");
         }
     }
@@ -2597,6 +2539,54 @@ public class PlayerController extends Application {
             }
         } catch (Exception e) {
             AppLogger.log("[CLEANUP] Error during orphaned sequence cleanup: " + e.getMessage());
+        }
+    }
+
+    private void shutdownApp() {
+        AppLogger.log("[APP] Closing application");
+        AppLogger.close();
+
+        running = false;
+
+        if (queueWorkerThread != null) {
+            queueWorkerThread.interrupt();
+        }
+
+        if (schedular != null) {
+            schedular.shutdownNow();
+        }
+
+        if (vlcPlayer != null) {
+            try {
+                vlcPlayer.controls().stop();
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (downloadManager != null) {
+            try {
+                downloadManager.stop();
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (adScheduler != null) {
+            adScheduler.stop();
+        }
+        if (adPlayer != null) {
+            adPlayer.stop();
+        }
+
+        NetworkMonitor.getInstance().stop();
+        MemoryWatchdog.getInstance().stop();
+        HeartbeatService.getInstance().stop();
+        LogSyncService.getInstance().stop();
+
+        if (ledVuMeter != null) {
+            ledVuMeter.stop();
+        }
+        if (audioCallbackHandler != null) {
+            audioCallbackHandler.close();
         }
     }
 }

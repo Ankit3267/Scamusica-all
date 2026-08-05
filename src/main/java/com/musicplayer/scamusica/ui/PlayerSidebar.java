@@ -68,7 +68,11 @@ public class PlayerSidebar {
         icon.getStyleClass().add("settings-icon");
         icon.setOnMouseClicked(e -> {
             LeavingPopup popup = new LeavingPopup();
-            popup.show(parentStage, new LeavingPopup.Callback() {
+            String lang = com.musicplayer.scamusica.manager.LanguageManager.getLangCode();
+            String title = "es".equals(lang) ? "¿ESTÁS SALIENDO?" : "YOU'RE LEAVING?";
+            String subtitle = "es".equals(lang) ? "Usted esta desactivando la Licencia" : "You are deactivating the License";
+
+            popup.show(parentStage, title, subtitle, new LeavingPopup.Callback() {
                 public void onYes() {
                     SessionManager.clearToken();
 
