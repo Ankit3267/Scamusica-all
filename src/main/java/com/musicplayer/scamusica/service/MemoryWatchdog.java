@@ -48,7 +48,16 @@ public class MemoryWatchdog {
                 AppLogger.log(String.format("[Watchdog] Heap usage: %.2f%% (%d MB / %d MB)", 
                     usedPercentage, usedMem / 1024 / 1024, maxMem / 1024 / 1024));
 
-                if (usedPercentage > 92.0) {
+                if (usedPercentage > 95.0) {
+                    AppLogger.log("[Watchdog] FATAL MEMORY LEVEL (>95%). OOM imminent!");
+                    ImageCache.clearMemoryCache();
+                    for (Runnable callback : cleanupCallbacks) {
+                        try {
+                            callback.run();
+                        } catch (Exception e) {}
+                    }
+                    System.gc();
+                } else if (usedPercentage > 92.0) {
                     AppLogger.log("[Watchdog] CRITICAL MEMORY LEVEL. Forcing GC and clearing caches.");
                     ImageCache.clearMemoryCache();
                     for (Runnable callback : cleanupCallbacks) {
@@ -60,14 +69,13 @@ public class MemoryWatchdog {
                 } else if (usedPercentage > 85.0) {
                     AppLogger.log("[Watchdog] HIGH MEMORY LEVEL. Clearing caches.");
                     ImageCache.clearMemoryCache();
-                    System.gc();
-                } else if (usedPercentage > 70.0) {
+                } else if (usedPercentage > 75.0) {
                     System.gc();
                 }
             } catch (Exception e) {
                 AppLogger.log("[Watchdog] Error: " + e.getMessage());
             }
-        }, 1, 1, TimeUnit.HOURS);
+        }, 10, 10, TimeUnit.MINUTES);
     }
 
     public void stop() {

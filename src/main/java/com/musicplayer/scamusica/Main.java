@@ -138,6 +138,12 @@ public class Main extends Application {
         AppLogger.init();
 
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            if (throwable instanceof OutOfMemoryError) {
+                try (java.io.FileWriter fw = new java.io.FileWriter(System.getProperty("user.home") + java.io.File.separator + ".scamusica" + java.io.File.separator + "logs" + java.io.File.separator + "oom_crash.log", true)) {
+                    fw.write(System.currentTimeMillis() + " OOM in " + thread.getName() + "\n");
+                } catch (Exception ignored) {}
+            }
+
             AppLogger.log("[Main] Uncaught Exception in thread " + thread.getName() + ": " + throwable.getMessage());
             try {
                 com.musicplayer.scamusica.service.LogSyncService.getInstance().addErrorLog(
@@ -159,8 +165,8 @@ public class Main extends Application {
                 cause = cause.getCause();
             }
 
-            if (isJnaError) {
-                AppLogger.log("[Main] JNA error detected. Restarting application...");
+            if (isJnaError || throwable instanceof OutOfMemoryError) {
+                AppLogger.log("[Main] Critical error (JNA or OOM) detected. Restarting application...");
                 try {
                     String[] possiblePaths = {
                             System.getProperty("user.home") + java.io.File.separator + "scamusica"
@@ -197,7 +203,7 @@ public class Main extends Application {
                         Thread.sleep(3000);
                     } catch (Exception ignored) {
                     }
-                    AppLogger.log("[Main] Exiting JVM now due to JNA error.");
+                    AppLogger.log("[Main] Exiting JVM now due to critical error.");
                     AppLogger.close();
                     System.exit(1);
                 }).start();

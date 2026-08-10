@@ -32,7 +32,7 @@ public class OfflineCache {
     private static final String TRACKS_PREFIX = "tracks_";
     private static final String SEQ_PREFIX = "download_seq_";
 
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Gson GSON = new Gson();
 
     // ─── Cache directory ensure karo ────────────────────────────────────────
     private static File getCacheDir() {
@@ -97,6 +97,25 @@ public class OfflineCache {
     public static void saveTracks(String genreTitle, List<PlaylistTrack> tracks) {
         try {
             File file = new File(getCacheDir(), TRACKS_PREFIX + safeFileName(genreTitle) + ".json");
+            
+            // Skip redundant writes to save memory during JSON serialization
+            if (file.exists()) {
+                List<PlaylistTrack> cachedTracks = loadTracks(genreTitle);
+                if (cachedTracks.size() == tracks.size()) {
+                    boolean changed = false;
+                    for (int i = 0; i < tracks.size(); i++) {
+                        if (!java.util.Objects.equals(tracks.get(i).getId(), cachedTracks.get(i).getId())) {
+                            changed = true;
+                            break;
+                        }
+                    }
+                    if (!changed) {
+                        AppLogger.log("[OfflineCache] Tracks unchanged for genre: " + genreTitle + ", skipping save");
+                        return;
+                    }
+                }
+            }
+
             String json = GSON.toJson(tracks);
             Files.write(file.toPath(), json.getBytes(StandardCharsets.UTF_8));
             AppLogger.log("[OfflineCache] Tracks saved for genre: " + genreTitle + " (" + tracks.size() + ")");

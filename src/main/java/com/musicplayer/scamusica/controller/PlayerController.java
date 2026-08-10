@@ -159,6 +159,11 @@ public class PlayerController extends Application {
         // === NETWORK MONITOR START ===
         NetworkMonitor.getInstance().start();
         AppLogger.log("[APP] Player started");
+        
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            AppLogger.log("[APP] JVM shutdown hook triggered - possible OOM or external kill");
+            AppLogger.close();
+        }));
 
         // Schedule non-critical services to start later to reduce startup contention
         ScheduledExecutorService startupDelayer = Executors.newSingleThreadScheduledExecutor();
@@ -583,7 +588,7 @@ public class PlayerController extends Application {
                         long now = System.currentTimeMillis();
                         for (File f : files) {
                             if (f.getName().startsWith("play_") && f.getName().endsWith(".mp3")) {
-                                if (now - f.lastModified() > 15 * 60 * 1000) {
+                                if (now - f.lastModified() > 10 * 60 * 1000) {
                                     if (f.delete()) {
                                         AppLogger.log("[TEMP] Periodic sweep deleted: " + f.getName());
                                     }
@@ -595,7 +600,7 @@ public class PlayerController extends Application {
             } catch (Exception e) {
                 AppLogger.log("[TEMP] Sweep error: " + e.getMessage());
             }
-        }, 2, 2, java.util.concurrent.TimeUnit.HOURS);
+        }, 30, 30, java.util.concurrent.TimeUnit.MINUTES);
     }
 
     private void syncWithServer() {
@@ -2092,9 +2097,8 @@ public class PlayerController extends Application {
                     return;
                 }
 
-                cleanupTempFile();
-
                 Platform.runLater(() -> {
+                    cleanupTempFile();
                     try {
 
                         AppLogger.log("[PLAYER] Song finished, playing next track");
