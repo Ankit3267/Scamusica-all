@@ -52,22 +52,24 @@ public class AppLogger {
         log("[LOGGER] Initialized. File: " + currentLogFile.getAbsolutePath());
     }
 
-    public static synchronized void log(String message) {
+    public static void log(String message) {
         String time = TIME_FORMAT.format(LocalDateTime.now());
         String finalMsg = "[" + time + "] " + message;
 
         System.out.println(finalMsg);
 
-        if (writer != null) {
-            writer.println(finalMsg);
-            bytesWritten += finalMsg.length() + System.lineSeparator().length();
+        synchronized (AppLogger.class) {
+            if (writer != null) {
+                writer.println(finalMsg);
+                bytesWritten += finalMsg.length() + System.lineSeparator().length();
 
-            if (bytesWritten > MAX_FILE_SIZE) {
-                try {
-                    createNewLogFile(currentLogFile.getParentFile());
-                    cleanupOldLogs(currentLogFile.getParentFile());
-                } catch (IOException e) {
-                    e.printStackTrace();
+                if (bytesWritten > MAX_FILE_SIZE) {
+                    try {
+                        createNewLogFile(currentLogFile.getParentFile());
+                        cleanupOldLogs(currentLogFile.getParentFile());
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         }

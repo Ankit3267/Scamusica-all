@@ -37,7 +37,7 @@ public class NetworkMonitor {
 
     private NetworkMonitor() {}
 
-    public static NetworkMonitor getInstance() {
+    public static synchronized NetworkMonitor getInstance() {
         if (instance == null) {
             instance = new NetworkMonitor();
         }

@@ -161,5 +161,25 @@ public class ImageCache {
         synchronized (memoryCache) {
             memoryCache.clear();
         }
+        
+        // Also take this opportunity to clean up disk cache to prevent unbounded growth
+        try {
+            cleanupOldDiskCache();
+        } catch (Exception e) {
+            AppLogger.log("[ImageCache] Error cleaning disk cache: " + e.getMessage());
+        }
+    }
+
+    public static void cleanupOldDiskCache() {
+        File dir = getImagesDir();
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".jpg"));
+        if (files != null && files.length > 500) {
+            AppLogger.log("[ImageCache] Cleaning up old disk cache, file count: " + files.length);
+            java.util.Arrays.sort(files, java.util.Comparator.comparingLong(File::lastModified));
+            // delete oldest files, keeping only latest 200
+            for (int i = 0; i < files.length - 200; i++) {
+                files[i].delete();
+            }
+        }
     }
 }

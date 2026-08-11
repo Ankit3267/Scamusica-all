@@ -118,10 +118,12 @@ public class PlayerController extends Application {
     private BlockingQueue<Runnable> operationQueue = new LinkedBlockingQueue<>();
     private java.util.concurrent.ExecutorService asyncExecutor = java.util.concurrent.Executors.newFixedThreadPool(4,
             r -> {
-                Thread t = new Thread(r, "AsyncExecutor-Thread");
+                Thread t = new Thread(r, "PlayerController-Async");
                 t.setDaemon(true);
                 return t;
             });
+
+    private java.util.concurrent.ScheduledExecutorService startupDelayer;
     private volatile boolean running = true;
     private List<Integer> lastServerIds = new ArrayList<>();
 
@@ -144,12 +146,10 @@ public class PlayerController extends Application {
                     + File.separator + ".scamusica"
                     + File.separator + "temp");
             if (tempDir.exists() && tempDir.isDirectory()) {
-                File[] files = tempDir.listFiles();
+                File[] files = tempDir.listFiles((dir, name) -> name.startsWith("play_") && name.endsWith(".mp3"));
                 if (files != null) {
                     for (File f : files) {
-                        if (f.getName().startsWith("play_") && f.getName().endsWith(".mp3")) {
-                            f.delete();
-                        }
+                        f.delete();
                     }
                 }
             }
@@ -166,10 +166,12 @@ public class PlayerController extends Application {
         }));
 
         // Schedule non-critical services to start later to reduce startup contention
-        ScheduledExecutorService startupDelayer = Executors.newSingleThreadScheduledExecutor();
-        startupDelayer.schedule(() -> MemoryWatchdog.getInstance().start(), 60, TimeUnit.SECONDS);
-        startupDelayer.schedule(() -> HeartbeatService.getInstance().start(), 30, TimeUnit.SECONDS);
-        startupDelayer.schedule(() -> LogSyncService.getInstance().start(), 30, TimeUnit.SECONDS);
+        startupDelayer = java.util.concurrent.Executors
+                .newSingleThreadScheduledExecutor();
+        startupDelayer.schedule(() -> MemoryWatchdog.getInstance().start(), 60, java.util.concurrent.TimeUnit.SECONDS);
+        startupDelayer.schedule(() -> HeartbeatService.getInstance().start(), 30, java.util.concurrent.TimeUnit.SECONDS);
+        startupDelayer.schedule(() -> LogSyncService.getInstance().start(), 30, java.util.concurrent.TimeUnit.SECONDS);
+        startupDelayer.schedule(this::initializeAdSystem, 5, java.util.concurrent.TimeUnit.SECONDS);
 
         String appDir = System.getProperty("user.dir");
         String vlcPath = appDir + File.separator + "vlc";
@@ -185,9 +187,6 @@ public class PlayerController extends Application {
 
         vlcPlayerComponent = new AudioPlayerComponent();
         vlcPlayer = vlcPlayerComponent.mediaPlayer();
-
-        // Delay AdSystem init slightly to allow UI to render first
-        startupDelayer.schedule(this::initializeAdSystem, 5, TimeUnit.SECONDS);
 
         Button headphonesButton = sidebarUtil.createIconButton("fas-headphones");
         List<Button> sidebarButtons = Arrays.asList(headphonesButton);
@@ -567,15 +566,14 @@ public class PlayerController extends Application {
                     e.printStackTrace();
                 }
             });
-//        }, 15, 30, java.util.concurrent.TimeUnit.SECONDS); // Changed from 300s to 30s for testing
-    }, 30, 300, java.util.concurrent.TimeUnit.SECONDS); // 300s = 5 minutes
+        }, 30, 300, java.util.concurrent.TimeUnit.SECONDS);
         schedular.scheduleAtFixedRate(() -> {
             try {
                 checkAndApplyVolumeSchedule();
             } catch (Exception e) {
-                AppLogger.log("[Volume] Schedule check failed: " + e.getMessage());
+                e.printStackTrace();
             }
-        }, 0, 5, java.util.concurrent.TimeUnit.SECONDS);
+        }, 0, 30, java.util.concurrent.TimeUnit.SECONDS);
 
         schedular.scheduleAtFixedRate(() -> {
             try {
@@ -583,16 +581,13 @@ public class PlayerController extends Application {
                         + File.separator + ".scamusica"
                         + File.separator + "temp");
                 if (tempDir.exists() && tempDir.isDirectory()) {
-                    File[] files = tempDir.listFiles();
+                    File[] files = tempDir.listFiles((dir, name) -> name.startsWith("play_") && name.endsWith(".mp3"));
                     if (files != null) {
                         long now = System.currentTimeMillis();
                         for (File f : files) {
-                            if (f.getName().startsWith("play_") && f.getName().endsWith(".mp3")) {
-                                if (now - f.lastModified() > 10 * 60 * 1000) {
-                                    if (f.delete()) {
-                                        AppLogger.log("[TEMP] Periodic sweep deleted: " + f.getName());
-                                    }
-                                }
+                            // Keep files for 2 hours to avoid deleting currently playing long mixes
+                            if (now - f.lastModified() > 2 * 60 * 60 * 1000L) {
+                                f.delete();
                             }
                         }
                     }
@@ -679,6 +674,12 @@ public class PlayerController extends Application {
                     currentPlaylistName = nextSequence;
                     playlistCurrent[0] = nextSequence;
                     final String finalNextSeq = nextSequence;
+
+                    // Stop the old download manager BEFORE loading new playlist
+                    if (downloadManager != null) {
+                        downloadManager.stop();
+                        downloadManager = null;
+                    }
 
                     Platform.runLater(() -> {
                         try {
@@ -795,15 +796,19 @@ public class PlayerController extends Application {
             }
 
             // ✅ DELETE
+            if (!toDelete.isEmpty() && downloadManager != null) {
+                downloadManager.removeFromQueue(toDelete);
+            }
             for (Integer id : toDelete) {
 
                 PlaylistTrack current = null;
 
-                if (currentTrackIndex < playQueue.size()) {
-                    current = playQueue.get(currentTrackIndex);
+                synchronized (playQueue) {
+                    if (currentTrackIndex < playQueue.size()) {
+                        current = playQueue.get(currentTrackIndex);
+                    }
+                    playQueue.removeIf(track -> track.getId() == id);
                 }
-
-                playQueue.removeIf(track -> track.getId() == id);
 
                 deleteSongFile(id);
 
@@ -882,20 +887,6 @@ public class PlayerController extends Application {
 
                         setGenreSwitchEnabled(false);
 
-                        // // Ad start hone par saved volume restore karo
-                        // double savedVol = prefs.getDouble(PREF_VOLUME, 85.0);
-                        // if (vlcPlayer != null) {
-                        // vlcPlayer.audio().setVolume((int) savedVol);
-                        // }
-
-                        // if (globalBottomBar != null) {
-                        //     Slider volumeSlider = controlsUtil.getVolumeSlider(globalBottomBar);
-                        //     if (volumeSlider != null) {
-                        //         volumeSlider.setDisable(false);
-                        //         volumeSlider.setMouseTransparent(false);
-                        //     }
-                        // }
-
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -910,13 +901,16 @@ public class PlayerController extends Application {
 
                 Platform.runLater(() -> {
                     try {
-
-                        if (!playQueue.isEmpty() && currentTrackIndex < playQueue.size()) {
-                            PlaylistTrack track = playQueue.get(currentTrackIndex);
-                            globalTitleLabel.textProperty().unbind();
-                            globalTitleLabel.setText(track.getTitle());
-                            globalAlbumHeading.textProperty().unbind();
-                            globalAlbumHeading.setText(currentPlaylistName);
+                        synchronized (playQueue) {
+                            if (!playQueue.isEmpty() && currentTrackIndex < playQueue.size()) {
+                                PlaylistTrack track = playQueue.get(currentTrackIndex);
+                                if (track != null) {
+                                    globalTitleLabel.textProperty().unbind();
+                                    globalTitleLabel.setText(track.getTitle());
+                                    globalAlbumHeading.textProperty().unbind();
+                                    globalAlbumHeading.setText(currentPlaylistName);
+                                }
+                            }
                         }
 
                         if (globalProgressSlider != null) {
@@ -1758,15 +1752,18 @@ public class PlayerController extends Application {
             Label downloadLabel,
             boolean autoPlay) throws URISyntaxException {
 
-        if (playQueue.isEmpty())
-            return;
+        PlaylistTrack track;
+        synchronized (playQueue) {
+            if (playQueue.isEmpty())
+                return;
 
-        if (currentTrackIndex < 0 || currentTrackIndex >= playQueue.size()) {
-            stopPlayback(progressSlider, leftTime, rightTime, controlsWrapper, downloadLabel);
-            return;
+            if (currentTrackIndex < 0 || currentTrackIndex >= playQueue.size()) {
+                stopPlayback(progressSlider, leftTime, rightTime, controlsWrapper, downloadLabel);
+                return;
+            }
+
+            track = playQueue.get(currentTrackIndex);
         }
-
-        PlaylistTrack track = playQueue.get(currentTrackIndex);
         // New Code for generating the file
         PlaybackHistoryLogger.logSong(track);
         // New Code for generating the file
@@ -2153,10 +2150,12 @@ public class PlayerController extends Application {
 
         currentTrackIndex++;
         AppLogger.log("[PLAYER] Next track index: " + currentTrackIndex);
-        if (currentTrackIndex >= playQueue.size()) {
-            AppLogger.log("[PlayerController] All tracks finished. Reshuffling and looping...");
-            java.util.Collections.shuffle(playQueue);
-            currentTrackIndex = 0;
+        synchronized (playQueue) {
+            if (currentTrackIndex >= playQueue.size()) {
+                AppLogger.log("[PlayerController] All tracks finished. Reshuffling and looping...");
+                java.util.Collections.shuffle(playQueue);
+                currentTrackIndex = 0;
+            }
         }
 
         playTrack(
@@ -2197,12 +2196,19 @@ public class PlayerController extends Application {
 
         javafx.event.EventHandler<javafx.scene.input.MouseEvent> clickHandler = e -> {
             e.consume();
-            if (playQueue.isEmpty()) {
-                return;
+            boolean shouldRestart = false;
+            synchronized (playQueue) {
+                if (playQueue.isEmpty()) {
+                    return;
+                }
+
+                if (vlcPlayer == null || currentTrackIndex >= playQueue.size() || currentTrackIndex < 0) {
+                    currentTrackIndex = 0;
+                    shouldRestart = true;
+                }
             }
 
-            if (vlcPlayer == null || currentTrackIndex >= playQueue.size() || currentTrackIndex < 0) {
-                currentTrackIndex = 0;
+            if (shouldRestart) {
                 try {
                     playTrack(
                             albumHeading,
@@ -2567,6 +2573,14 @@ public class PlayerController extends Application {
             }
         }
 
+        if (startupDelayer != null) {
+            startupDelayer.shutdownNow();
+        }
+
+        if (asyncExecutor != null) {
+            asyncExecutor.shutdownNow();
+        }
+
         if (downloadManager != null) {
             try {
                 downloadManager.stop();
@@ -2580,6 +2594,8 @@ public class PlayerController extends Application {
         if (adPlayer != null) {
             adPlayer.stop();
         }
+        
+        AdDownloadManager.shutdown();
 
         NetworkMonitor.getInstance().stop();
         MemoryWatchdog.getInstance().stop();

@@ -40,6 +40,7 @@ public class DownloadManager {
     private final BlockingQueue<Integer> downloadQueue = new LinkedBlockingQueue<>();
     private volatile boolean cancelled = false;
     private final Set<Integer> activeDownloads = ConcurrentHashMap.newKeySet();
+    private final Set<Integer> cancelledIds = ConcurrentHashMap.newKeySet();
     private static final int MAX_RETRIES = 3;
     private static final long MIN_VALID_FILE_SIZE = 10_000; // 10KB
     private final Map<Integer, Integer> retryCounts = new ConcurrentHashMap<>();
@@ -98,6 +99,27 @@ public class DownloadManager {
         }
     }
 
+    public void clearQueue() {
+        downloadQueue.clear();
+        activeDownloads.clear();
+        retryCounts.clear();
+        fallbackUrlMap.clear();
+        cancelledIds.clear();
+        AppLogger.log("[DOWNLOAD] Queue cleared");
+    }
+
+    public void removeFromQueue(Set<Integer> idsToRemove) {
+        if (idsToRemove == null || idsToRemove.isEmpty()) return;
+        downloadQueue.removeIf(idsToRemove::contains);
+        activeDownloads.removeAll(idsToRemove);
+        cancelledIds.addAll(idsToRemove);
+        for (Integer id : idsToRemove) {
+            retryCounts.remove(id);
+            fallbackUrlMap.remove(id);
+        }
+        AppLogger.log("[DOWNLOAD] Removed " + idsToRemove.size() + " IDs from queue");
+    }
+
     private void runWorker() {
         Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
         while (!cancelled) {
@@ -113,6 +135,14 @@ public class DownloadManager {
 
     private void processDownload(Integer id) {
         AppLogger.log("[DOWNLOAD] Starting: " + id);
+        
+        if (cancelledIds.remove(id)) {
+            AppLogger.log("[DOWNLOAD] Skipping cancelled download: " + id);
+            activeDownloads.remove(id);
+            retryCounts.remove(id);
+            return;
+        }
+
         try {
             File baseDir = new File(downloadFolderPath);
             if (!baseDir.exists()) baseDir.mkdirs();

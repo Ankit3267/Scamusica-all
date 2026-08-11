@@ -111,7 +111,9 @@ public class SessionManager {
             if (!file.exists()) return null;
 
             Properties properties = new Properties();
-            properties.load(new FileInputStream(file));
+            try (FileInputStream fis = new FileInputStream(file)) {
+                properties.load(fis);
+            }
 
             String encryptedToken = properties.getProperty("userId");
             if (encryptedToken == null) return null;
@@ -131,7 +133,9 @@ public class SessionManager {
             if (!file.exists()) return null;
 
             Properties properties = new Properties();
-            properties.load(new FileInputStream(file));
+            try (FileInputStream fis = new FileInputStream(file)) {
+                properties.load(fis);
+            }
 
             String encryptedLicense = properties.getProperty("licenseCode");
             if (encryptedLicense == null) return null;
@@ -150,7 +154,9 @@ public class SessionManager {
             if (!file.exists()) return null;
 
             Properties properties = new Properties();
-            properties.load(new FileInputStream(file));
+            try (FileInputStream fis = new FileInputStream(file)) {
+                properties.load(fis);
+            }
 
             String language = properties.getProperty("language");
             if (language == null) return "en";
@@ -181,9 +187,9 @@ public class SessionManager {
 
             // Load existing properties if file exists
             if (file.exists()) {
-                FileInputStream in = new FileInputStream(file);
-                properties.load(in);
-                in.close();
+                try (FileInputStream in = new FileInputStream(file)) {
+                    properties.load(in);
+                }
             }
 
             // Update only the language key

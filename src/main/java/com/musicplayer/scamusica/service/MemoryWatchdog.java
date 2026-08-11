@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
 public class MemoryWatchdog {
     private static MemoryWatchdog instance;
     private ScheduledExecutorService scheduler;
-    private List<Runnable> cleanupCallbacks = new ArrayList<>();
+    private java.util.concurrent.CopyOnWriteArrayList<Runnable> cleanupCallbacks = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private MemoryWatchdog() {}
 

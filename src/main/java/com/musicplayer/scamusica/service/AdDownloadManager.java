@@ -25,6 +25,12 @@ public class AdDownloadManager {
         return t;
     });
 
+    public static void shutdown() {
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdownNow();
+        }
+    }
+
     public static File getAdDir() {
         File dir = new File(System.getProperty("user.home") + File.separator + AD_DIR_NAME);
         if (!dir.exists())

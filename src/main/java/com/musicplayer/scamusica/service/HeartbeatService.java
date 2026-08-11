@@ -25,12 +25,27 @@ public class HeartbeatService {
     private static HeartbeatService instance;
     private ScheduledExecutorService scheduler;
     private HttpClient client;
+    private long clientCreationTime = 0;
+    private SSLContext sslContext;
     private final ObjectMapper mapper = new ObjectMapper();
 
     private HeartbeatService() {
+        try {
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            KeyStore ks = KeyStore.getInstance("JKS");
+            File cacerts = new File(System.getProperty("java.home") + "/lib/security/cacerts");
+            try (FileInputStream fis = new FileInputStream(cacerts)) {
+                ks.load(fis, "changeit".toCharArray());
+            }
+            tmf.init(ks);
+            sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, tmf.getTrustManagers(), null);
+        } catch (Exception e) {
+            AppLogger.log("[HeartbeatService] Failed to initialize SSL context, falling back to default.");
+        }
     }
 
-    public static HeartbeatService getInstance() {
+    public static synchronized HeartbeatService getInstance() {
         if (instance == null) {
             instance = new HeartbeatService();
         }
@@ -39,21 +54,20 @@ public class HeartbeatService {
 
     private synchronized HttpClient getClient() {
         if (client == null) {
-            try {
-                TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-                KeyStore ks = KeyStore.getInstance("JKS");
-                File cacerts = new File(System.getProperty("java.home") + "/lib/security/cacerts");
-                try (FileInputStream fis = new FileInputStream(cacerts)) {
-                    ks.load(fis, "changeit".toCharArray());
-                }
-                tmf.init(ks);
-                SSLContext sslContext = SSLContext.getInstance("TLS");
-                sslContext.init(null, tmf.getTrustManagers(), null);
+            if (sslContext != null) {
                 client = HttpClient.newBuilder().sslContext(sslContext).build();
-            } catch (Exception e) {
-                AppLogger.log("[HeartbeatService] Failed to initialize SSL HttpClient, falling back to default.");
+            } else {
                 client = HttpClient.newHttpClient();
             }
+            clientCreationTime = System.currentTimeMillis();
+        } else if (System.currentTimeMillis() - clientCreationTime > 6 * 60 * 60 * 1000L) {
+            // Recreate client to prevent connection pool exhaustion/FD leaks over days
+            if (sslContext != null) {
+                client = HttpClient.newBuilder().sslContext(sslContext).build();
+            } else {
+                client = HttpClient.newHttpClient();
+            }
+            clientCreationTime = System.currentTimeMillis();
         }
         return client;
     }
