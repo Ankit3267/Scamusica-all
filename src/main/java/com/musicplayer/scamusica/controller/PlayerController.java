@@ -795,6 +795,25 @@ public class PlayerController extends Application {
                 }
             }
 
+            // ✅ RESHUFFLE remaining queue when new styles/songs are added
+            // so the new tracks get mixed in and played soon
+            if (!toAdd.isEmpty()) {
+                synchronized (playQueue) {
+                    int startIdx = currentTrackIndex + 1;
+                    if (startIdx < playQueue.size()) {
+                        List<PlaylistTrack> remaining = new ArrayList<>(
+                                playQueue.subList(startIdx, playQueue.size()));
+                        Collections.shuffle(remaining);
+                        for (int i = 0; i < remaining.size(); i++) {
+                            playQueue.set(startIdx + i, remaining.get(i));
+                        }
+                        AppLogger.log("[SYNC] New styles/songs detected — reshuffled "
+                                + remaining.size() + " remaining tracks in playQueue "
+                                + "(from index " + startIdx + ")");
+                    }
+                }
+            }
+
             // ✅ DELETE
             if (!toDelete.isEmpty() && downloadManager != null) {
                 downloadManager.removeFromQueue(toDelete);
