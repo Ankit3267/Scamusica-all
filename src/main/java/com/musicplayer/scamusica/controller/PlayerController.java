@@ -126,6 +126,8 @@ public class PlayerController extends Application {
     private java.util.concurrent.ScheduledExecutorService startupDelayer;
     private volatile boolean running = true;
     private List<Integer> lastServerIds = new ArrayList<>();
+    private List<Integer> currentDownloadSequence = new ArrayList<>();
+    private java.util.Map<Integer, String> idToStyleMap = new java.util.HashMap<>();
 
     private AdScheduler adScheduler;
     private AdPlayer adPlayer;
@@ -745,6 +747,15 @@ public class PlayerController extends Application {
             if (serverTracks == null)
                 return;
 
+            List<Integer> serverDownloadSeq = apiService.fetchDownloadSequenceForGenre(currentPlaylist);
+            if (serverDownloadSeq != null) {
+                currentDownloadSequence = new ArrayList<>(serverDownloadSeq);
+            }
+            
+            for (PlaylistTrack t : serverTracks) {
+                idToStyleMap.put(t.getId(), t.getFolderTitle());
+            }
+
             String baseDownloadDir = System.getProperty("user.home") + File.separator + ".scamusica" + File.separator + "downloads";
             String genreFolderPath = baseDownloadDir + File.separator + currentPlaylist.replaceAll("\\s+", "_");
             cleanupRemovedSequenceTracks(new File(genreFolderPath), serverTracks);
@@ -776,6 +787,43 @@ public class PlayerController extends Application {
             AppLogger.log("[SYNC] To Add: " + toAdd);
             AppLogger.log("[SYNC] To Delete: " + toDelete);
 
+            // 🔥 FIX: If downloadManager is null (was never created because 0 songs at startup)
+            // and new songs are now available, trigger a full playlist reload which will
+            // create the DownloadManager, queue downloads, and start playback automatically.
+            if (downloadManager == null && !toAdd.isEmpty()) {
+                AppLogger.log("[SYNC] DownloadManager is null but " + toAdd.size()
+                        + " new tracks detected. Triggering full playlist reload for: " + currentPlaylistName);
+
+                final String reloadPlaylistName = currentPlaylistName;
+                Platform.runLater(() -> {
+                    try {
+                        loadPlaylistAndStart(
+                                reloadPlaylistName,
+                                globalAlbumHeading,
+                                globalTitleLabel,
+                                globalProgressSlider,
+                                globalLeftTime,
+                                globalRightTime,
+                                globalControlsWrapper,
+                                globalBottomBar,
+                                globalDownloadLabel,
+                                true
+                        );
+
+                        // Update dropdown items in case playlist list changed
+                        playlistViewItems.setAll(
+                                playlistMaster.stream()
+                                        .filter(s -> !s.equals(playlistCurrent[0]))
+                                        .collect(Collectors.toList()));
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        AppLogger.log("[SYNC] Full reload after null downloadManager failed: " + e.getMessage());
+                    }
+                });
+                return; // Skip the rest of sync — loadPlaylistAndStart handles everything
+            }
+
             // ✅ ADD
             for (PlaylistTrack t : serverTracks) {
                 if (toAdd.contains(t.getId())) {
@@ -796,20 +844,20 @@ public class PlayerController extends Application {
             }
 
             // ✅ RESHUFFLE remaining queue when new styles/songs are added
-            // so the new tracks get mixed in and played soon
+            // using the server-provided download sequence order
             if (!toAdd.isEmpty()) {
                 synchronized (playQueue) {
                     int startIdx = currentTrackIndex + 1;
                     if (startIdx < playQueue.size()) {
                         List<PlaylistTrack> remaining = new ArrayList<>(
                                 playQueue.subList(startIdx, playQueue.size()));
-                        Collections.shuffle(remaining);
+                        reorderTracksBySequence(remaining, currentDownloadSequence);
                         for (int i = 0; i < remaining.size(); i++) {
                             playQueue.set(startIdx + i, remaining.get(i));
                         }
-                        AppLogger.log("[SYNC] New styles/songs detected — reshuffled "
+                        AppLogger.log("[SYNC] New styles/songs detected — reordered "
                                 + remaining.size() + " remaining tracks in playQueue "
-                                + "(from index " + startIdx + ")");
+                                + "based on server sequence (from index " + startIdx + ")");
                     }
                 }
             }
@@ -844,9 +892,8 @@ public class PlayerController extends Application {
 
             // Update Total files count for UI
             try {
-                List<Integer> serverDownloadSeq = apiService.fetchDownloadSequenceForGenre(currentPlaylist);
-                if (serverDownloadSeq != null) {
-                    currentGenreTotalFiles = serverDownloadSeq.size();
+                if (currentDownloadSequence != null && !currentDownloadSequence.isEmpty()) {
+                    currentGenreTotalFiles = currentDownloadSequence.size();
                 } else {
                     currentGenreTotalFiles = serverTracks.size();
                 }
@@ -1369,6 +1416,50 @@ public class PlayerController extends Application {
         }
     }
 
+    private void reorderTracksBySequence(List<PlaylistTrack> tracksToReorder, List<Integer> sequence) {
+        if (sequence == null || sequence.isEmpty()) {
+            java.util.Collections.shuffle(tracksToReorder);
+            return;
+        }
+
+        // 1. Group tracks by style and shuffle each bucket
+        java.util.Map<String, List<PlaylistTrack>> styleBuckets = new java.util.HashMap<>();
+        for (PlaylistTrack t : tracksToReorder) {
+            String style = t.getFolderTitle();
+            if (style == null || style.isEmpty()) style = "UNKNOWN_STYLE";
+            styleBuckets.computeIfAbsent(style, k -> new ArrayList<>()).add(t);
+        }
+        for (List<PlaylistTrack> bucket : styleBuckets.values()) {
+            java.util.Collections.shuffle(bucket);
+        }
+
+        // 2. Reconstruct queue based on the style pattern derived from the sequence
+        List<PlaylistTrack> reordered = new ArrayList<>();
+        java.util.Set<Integer> handledIds = new java.util.HashSet<>();
+
+        for (Integer id : sequence) {
+            String style = idToStyleMap.get(id);
+            if (style == null || style.isEmpty()) style = "UNKNOWN_STYLE";
+
+            List<PlaylistTrack> bucket = styleBuckets.get(style);
+            if (bucket != null && !bucket.isEmpty()) {
+                PlaylistTrack pulled = bucket.remove(0); // Pop the first randomized track
+                reordered.add(pulled);
+                handledIds.add(pulled.getId());
+            }
+        }
+
+        // 3. Add any leftovers (e.g. if sequence was missing something, or buckets had extra)
+        for (PlaylistTrack t : tracksToReorder) {
+            if (!handledIds.contains(t.getId())) {
+                reordered.add(t);
+            }
+        }
+
+        tracksToReorder.clear();
+        tracksToReorder.addAll(reordered);
+    }
+
     private void loadPlaylistAndStart(String playlistName,
             Label albumHeading,
             Label titleLabel,
@@ -1397,59 +1488,16 @@ public class PlayerController extends Application {
             if (downloadSeq == null)
                 downloadSeq = new ArrayList<>();
 
+            currentDownloadSequence = new ArrayList<>(downloadSeq);
+
             // ✅ STEP 2: KEY FIX - Reorder playQueue to match downloadSequence
             // This ensures first songs in queue are the first ones being downloaded
             if (fetchedTracks != null && !fetchedTracks.isEmpty()) {
-                if (!downloadSeq.isEmpty()) {
-                    // Create a map of ID -> Track for quick lookup
-                    Map<Integer, PlaylistTrack> trackMap = new HashMap<>();
-                    for (PlaylistTrack t : fetchedTracks) {
-                        trackMap.put(t.getId(), t);
-                    }
-
-                    // Reorder playQueue to match downloadSeq order
-                    // e.g., if downloadSeq = [561, 572, 564], then playQueue[0]=561,
-                    // playQueue[1]=572, etc.
-                    List<PlaylistTrack> reorderedQueue = new ArrayList<>();
-
-                    String baseDownloadDir = System.getProperty("user.home") + java.io.File.separator + ".scamusica" + java.io.File.separator + "downloads";
-                    String genreFolderPath = baseDownloadDir + java.io.File.separator + playlistName.replaceAll("\\s+", "_");
-
-                    // 1. First add downloaded tracks
-                    for (Integer id : downloadSeq) {
-                        if (trackMap.containsKey(id)) {
-                            java.io.File candidate = new java.io.File(genreFolderPath, "song-" + id + ".dat");
-                            if (candidate.exists() && candidate.length() > 0) {
-                                reorderedQueue.add(trackMap.get(id));
-                            }
-                        }
-                    }
-
-                    // 2. Then add not yet downloaded tracks
-                    for (Integer id : downloadSeq) {
-                        if (trackMap.containsKey(id)) {
-                            java.io.File candidate = new java.io.File(genreFolderPath, "song-" + id + ".dat");
-                            if (!candidate.exists() || candidate.length() == 0) {
-                                reorderedQueue.add(trackMap.get(id));
-                            }
-                        }
-                    }
-
-                    // Add remaining tracks (not in downloadSeq) - just in case
-                    Set<Integer> seenIds = new HashSet<>(downloadSeq);
-                    for (PlaylistTrack t : fetchedTracks) {
-                        if (!seenIds.contains(t.getId())) {
-                            reorderedQueue.add(t);
-                        }
-                    }
-
-                    playQueue.addAll(reorderedQueue);
-                } else {
-                    // No download sequence, shuffle normally
-                    List<PlaylistTrack> shuffled = new ArrayList<>(fetchedTracks);
-                    java.util.Collections.shuffle(shuffled);
-                    playQueue.addAll(shuffled);
+                for (PlaylistTrack t : fetchedTracks) {
+                    idToStyleMap.put(t.getId(), t.getFolderTitle());
                 }
+                playQueue.addAll(fetchedTracks);
+                reorderTracksBySequence(playQueue, currentDownloadSequence);
             }
 
             recomputeGlobalCountAndUpdateUI();
@@ -2171,8 +2219,8 @@ public class PlayerController extends Application {
         AppLogger.log("[PLAYER] Next track index: " + currentTrackIndex);
         synchronized (playQueue) {
             if (currentTrackIndex >= playQueue.size()) {
-                AppLogger.log("[PlayerController] All tracks finished. Reshuffling and looping...");
-                java.util.Collections.shuffle(playQueue);
+                AppLogger.log("[PlayerController] All tracks finished. Reordering sequence and looping...");
+                reorderTracksBySequence(playQueue, currentDownloadSequence);
                 currentTrackIndex = 0;
             }
         }
