@@ -26,6 +26,11 @@ public class PlaylistApiService {
         fetchRootJson();
     }
 
+    public void clearCache() {
+        cachedRoot = null;
+        cacheTimestamp = 0;
+    }
+
     // private JsonObject fetchRootJson() throws Exception {
     // String token = SessionManager.loadToken();
     //
@@ -115,9 +120,8 @@ public class PlaylistApiService {
 
             System.out.println("[PlaylistApiService] Playlists from API: " + titles);
 
-            if (!titles.isEmpty()) {
-                OfflineCache.savePlaylistTitles(titles);
-            }
+            // Always save to cache (including empty list) to reflect current server state
+            OfflineCache.savePlaylistTitles(titles);
 
             return titles;
 

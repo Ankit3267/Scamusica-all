@@ -137,6 +137,13 @@ public class Main extends Application {
     public static void main(String[] args) {
         AppLogger.init();
 
+        Runtime rt = Runtime.getRuntime();
+        long maxHeapMB = rt.maxMemory() / (1024 * 1024);
+        AppLogger.log("[Main] JVM max heap: " + maxHeapMB + " MB");
+        if (maxHeapMB > 1024) {
+            AppLogger.log("[Main] WARNING: Max heap is >1GB. Recommend setting -Xmx512m for this application.");
+        }
+
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             if (throwable instanceof OutOfMemoryError) {
                 try (java.io.FileWriter fw = new java.io.FileWriter(System.getProperty("user.home") + java.io.File.separator + ".scamusica" + java.io.File.separator + "logs" + java.io.File.separator + "oom_crash.log", true)) {

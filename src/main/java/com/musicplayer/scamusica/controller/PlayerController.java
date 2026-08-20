@@ -83,6 +83,9 @@ public class PlayerController extends Application {
     private String currentPlaylistName;
 
     private static final String PREF_VOLUME = "player_volume";
+    private static final String PREF_RESUME_PLAYLIST = "resume_playlist";
+    private static final String PREF_RESUME_TRACK_ID = "resume_track_id";
+    private static final String PREF_RESUME_TIME = "resume_time";
     private final Preferences prefs = Preferences.userNodeForPackage(PlayerController.class);
 
     private final List<PlaylistTrack> playQueue = Collections.synchronizedList(new ArrayList<>());
@@ -232,6 +235,39 @@ public class PlayerController extends Application {
                     albumImageView.getImage().cancel();
                 }
             });
+            idToStyleMap.clear();
+            if (apiService != null) {
+                apiService.clearCache();
+            }
+        });
+
+        MemoryWatchdog.getInstance().registerPreRestartCallback(() -> {
+            try {
+                if (currentPlaylistName != null) {
+                    prefs.put(PREF_RESUME_PLAYLIST, currentPlaylistName);
+                }
+                if (!playQueue.isEmpty() && currentTrackIndex < playQueue.size() && currentTrackIndex >= 0) {
+                    prefs.putInt(PREF_RESUME_TRACK_ID, playQueue.get(currentTrackIndex).getId());
+                } else {
+                    prefs.remove(PREF_RESUME_TRACK_ID);
+                }
+                if (vlcPlayer != null) {
+                    long time = 0;
+                    try {
+                        time = vlcPlayer.status().time();
+                    } catch (Exception e) {
+                    }
+                    if (adPlayer != null && adPlayer.isPlayingAd()) {
+                        time = adPlayer.getSavedSongTime();
+                    }
+                    prefs.putLong(PREF_RESUME_TIME, time);
+                }
+                prefs.flush();
+                AppLogger.log("[PlayerController] Saved resume state: Playlist=" + currentPlaylistName + ", Time="
+                        + prefs.getLong(PREF_RESUME_TIME, 0));
+            } catch (Exception e) {
+                AppLogger.log("[PlayerController] Error saving resume state: " + e.getMessage());
+            }
         });
 
         recomputeGlobalCountAndUpdateUI();
@@ -629,14 +665,71 @@ public class PlayerController extends Application {
             List<String> fetchedTitles = apiService.fetchPlaylistTitles();
             List<String> serverTitles;
 
-            if (fetchedTitles == null || fetchedTitles.isEmpty()) {
+            if (fetchedTitles == null) {
                 serverTitles = new ArrayList<>(java.util.Arrays.asList("Default"));
-                AppLogger.log("[SYNC] API returned empty titles, falling back to Default sequence.");
+                AppLogger.log("[SYNC] API returned null titles, falling back to Default sequence.");
+            } else if (fetchedTitles.isEmpty()) {
+                AppLogger.log("[SYNC] API returned empty titles (No sequence assigned).");
+                serverTitles = new ArrayList<>();
             } else {
                 serverTitles = fetchedTitles;
             }
 
-            if (serverTitles != null && !serverTitles.isEmpty()) {
+            if (serverTitles != null) {
+                if (serverTitles.isEmpty()) {
+                    AppLogger.log("[SYNC] No sequence assigned. Clearing player and downloads.");
+                    
+                    final List<String> emptyList = new ArrayList<>();
+                    asyncExecutor.submit(() -> {
+                        try {
+                            cleanupOrphanedSequences(emptyList);
+                        } catch (Exception e) {
+                            AppLogger.log("[SYNC] Orphaned sequence cleanup failed: " + e.getMessage());
+                        }
+                    });
+
+                    Platform.runLater(() -> {
+                        try {
+                            if (downloadManager != null) {
+                                downloadManager.stop();
+                                downloadManager = null;
+                            }
+                            
+                            stopPlayback(globalProgressSlider, globalLeftTime, globalRightTime, globalControlsWrapper, globalDownloadLabel);
+                            playQueue.clear();
+                            lastServerIds.clear();
+                            playlistMaster.clear();
+                            playlistViewItems.clear();
+                            currentPlaylistName = null;
+                            
+                            if (playlistPill != null) {
+                                Label textLabel = (Label) playlistPill.getChildren().get(0);
+                                textLabel.setText("No Sequence");
+                            }
+                            
+                            globalTitleLabel.textProperty().unbind();
+                            globalTitleLabel.setText("No Songs");
+                            globalAlbumHeading.textProperty().unbind();
+                            globalAlbumHeading.setText("No Sequence Assigned");
+                            if (albumImageView != null) {
+                                albumImageView.setImage(defaultAlbumImage);
+                            }
+                            
+                            albumUtil.setSongCount(0);
+                            totalDownloadedCounter.set(0);
+                            currentGenreDownloadedCount.set(0);
+                            currentGenreTotalFiles = 0;
+                            if (globalDownloadLabel != null) {
+                                updateGenreDownloadLabel(globalDownloadLabel);
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    });
+                    
+                    return; // Stop further sync
+                }
+
                 List<String> newSequences = serverTitles.stream()
                         .filter(title -> !playlistMaster.contains(title))
                         .collect(Collectors.toList());
@@ -752,6 +845,7 @@ public class PlayerController extends Application {
                 currentDownloadSequence = new ArrayList<>(serverDownloadSeq);
             }
             
+            idToStyleMap.clear();
             for (PlaylistTrack t : serverTracks) {
                 idToStyleMap.put(t.getId(), t.getFolderTitle());
             }
@@ -914,6 +1008,10 @@ public class PlayerController extends Application {
 
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            if (apiService != null) {
+                apiService.clearCache();
+            }
         }
     }
 
@@ -2582,8 +2680,8 @@ public class PlayerController extends Application {
             for (String title : serverTitles) {
                 validFolderNames.add(title.replaceAll("\\s+", "_"));
             }
-            // Always retain the Default sequence folder so it's ready when falling back
-            validFolderNames.add("Default");
+            // Do not force retain 'Default' if it is not in serverTitles
+            // validFolderNames.add("Default");
 
             File[] folders = baseDir.listFiles();
             if (folders == null) return;

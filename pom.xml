@@ -108,6 +108,11 @@
                       <version>0.0.8</version>
                       <configuration>
                           <mainClass>com.musicplayer.scamusica/com.musicplayer.scamusica.Main</mainClass>
+                          <options>
+                              <option>-Xmx512m</option>
+                              <option>-XX:+UseG1GC</option>
+                              <option>-XX:MaxGCPauseMillis=200</option>
+                          </options>
                           <jlinkImageName>scamusica-runtime</jlinkImageName>
                           <jlinkExecutable>${java.home}/bin/jlink</jlinkExecutable>
 						  <bindServices>true</bindServices>
