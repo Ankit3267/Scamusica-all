@@ -1,17 +1,17 @@
 package com.musicplayer.scamusica.model;
 
 public class VolumeSchedule {
-    private int id;
+    private Integer id;
     private String start_time;
     private String end_time;
-    private int music_volume;
-    private int ad_volume;
+    private Integer music_volume;
+    private Integer ad_volume;
 
-    public int getId() {
+    public Integer getId() {
         return id;
     }
 
-    public void setId(int id) {
+    public void setId(Integer id) {
         this.id = id;
     }
 
@@ -31,19 +31,19 @@ public class VolumeSchedule {
         this.end_time = end_time;
     }
 
-    public int getMusicVolume() {
+    public Integer getMusicVolume() {
         return music_volume;
     }
 
-    public void setMusicVolume(int music_volume) {
+    public void setMusicVolume(Integer music_volume) {
         this.music_volume = music_volume;
     }
 
-    public int getAdVolume() {
+    public Integer getAdVolume() {
         return ad_volume;
     }
 
-    public void setAdVolume(int ad_volume) {
+    public void setAdVolume(Integer ad_volume) {
         this.ad_volume = ad_volume;
     }
 }

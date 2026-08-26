@@ -17,17 +17,18 @@ public class PlaylistApiService {
 
     private static final String SONGS_URL = Utility.BASE_URL.get() + Utility.API_SONGS_ENDPOINT.get();
 
-    private volatile JsonObject cachedRoot = null;
-    private volatile long cacheTimestamp = 0;
+    // Cache to prevent multiple identical requests during a sync cycle
+    private static JsonObject cachedRootJson = null;
+    private static long cacheTimestamp = 0;
     private static final long CACHE_TTL_MS = 30_000; // 30 seconds
 
     public void prefetchAll() throws Exception {
-        cachedRoot = null;
+        cachedRootJson = null;
         fetchRootJson();
     }
 
     public void clearCache() {
-        cachedRoot = null;
+        cachedRootJson = null;
         cacheTimestamp = 0;
     }
 
@@ -57,8 +58,8 @@ public class PlaylistApiService {
 
     private JsonObject fetchRootJson() throws Exception {
         long now = System.currentTimeMillis();
-        if (cachedRoot != null && (now - cacheTimestamp) < CACHE_TTL_MS) {
-            return cachedRoot;
+        if (cachedRootJson != null && (now - cacheTimestamp) < CACHE_TTL_MS) {
+            return cachedRootJson;
         }
 
         String token = SessionManager.loadToken();
@@ -84,7 +85,7 @@ public class PlaylistApiService {
         }
 
         JsonObject root = JsonParser.parseString(response).getAsJsonObject();
-        cachedRoot = root;
+        cachedRootJson = root;
         cacheTimestamp = now;
         return root;
     }
@@ -593,5 +594,43 @@ public class PlaylistApiService {
             }
             return null;
         }
+    }
+    public Set<Integer> fetchDefaultSequenceSongIds() {
+        Set<Integer> allIds = new HashSet<>();
+        try {
+            String token = SessionManager.loadToken();
+            if (token == null || token.trim().isEmpty() || SessionManager.isTokenExpired(token)) {
+                return allIds;
+            }
+
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Authorization", "Bearer " + token);
+            headers.put("Accept", "application/json");
+
+            String endpoint = Utility.BASE_URL.get() + Utility.DEFAULT_SEQUENCE_ENDPOINT.get();
+            String response = ApiClient.get(endpoint, headers);
+
+            if (response == null || response.isEmpty()) {
+                return allIds;
+            }
+
+            JsonObject root = JsonParser.parseString(response).getAsJsonObject();
+            if (root.has("data") && root.get("data").isJsonObject()) {
+                JsonObject dataObj = root.getAsJsonObject("data");
+                if (dataObj.has("song_ids") && dataObj.get("song_ids").isJsonArray()) {
+                    JsonArray idsArray = dataObj.getAsJsonArray("song_ids");
+                    for (JsonElement idEl : idsArray) {
+                        if (idEl.isJsonPrimitive()) {
+                            try {
+                                allIds.add(idEl.getAsInt());
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            AppLogger.log("[PlaylistApiService] fetchDefaultSequenceSongIds failed: " + e.getMessage());
+        }
+        return allIds;
     }
 }

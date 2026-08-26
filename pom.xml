@@ -148,7 +148,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>com.musicplayer.scamusica.Main</mainClass>
+                            <mainClass>com.musicplayer.scamusica.AppLauncher</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

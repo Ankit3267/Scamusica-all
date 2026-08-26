@@ -7,6 +7,7 @@ public enum Utility {
     BASE_URL("https://apilive.scamusica.com"),
     MUSIC_PATH("/public/music/"),
     API_SONGS_ENDPOINT("/api/songs/player"),
+    DEFAULT_SEQUENCE_ENDPOINT("/api/songs/player/default-sequence"),
 
     // FILEPATH_BASE_URL("https://api.scamusica.com"),
     FILEPATH_BASE_URL("https://dndzskblsl1f7.cloudfront.net"),
