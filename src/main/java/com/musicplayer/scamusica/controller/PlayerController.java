@@ -274,7 +274,7 @@ public class PlayerController extends Application {
             }
         });
 
-        recomputeGlobalCountAndUpdateUI();
+        recomputeGlobalCountAndUpdateUI(false);
 
         List<String> tempList;
         try {
@@ -948,8 +948,8 @@ public class PlayerController extends Application {
                     if (newSeq != null && !newSeq.isEmpty()) {
                         currentDownloadSequence = new ArrayList<>(newSeq);
                         
-                        // Update UI counters
-                        final int total = currentDownloadSequence.size();
+                        // Update UI counters using unique count so UI doesn't inflate
+                        final int total = new java.util.HashSet<>(currentDownloadSequence).size();
                         Platform.runLater(() -> {
                             currentGenreTotalFiles = total;
                             if (globalDownloadLabel != null) {
@@ -1007,7 +1007,7 @@ public class PlayerController extends Application {
             // Update Total files count for UI
             try {
                 if (currentDownloadSequence != null && !currentDownloadSequence.isEmpty()) {
-                    currentGenreTotalFiles = currentDownloadSequence.size();
+                    currentGenreTotalFiles = new java.util.HashSet<>(currentDownloadSequence).size();
                 } else {
                     currentGenreTotalFiles = serverTracks.size();
                 }
@@ -1023,7 +1023,7 @@ public class PlayerController extends Application {
                 int existingInGenre = countExistingSongFiles(validIds);
                 currentGenreDownloadedCount.set(existingInGenre);
 
-                recomputeGlobalCountAndUpdateUI();
+                recomputeGlobalCountAndUpdateUI(false);
 
                 if (globalDownloadLabel != null) {
                     Platform.runLater(() -> {
@@ -1406,18 +1406,12 @@ public class PlayerController extends Application {
     }
 
     private int countExistingSongFiles(Set<Integer> validIds) {
-        File dir = new File(SONGS_DIR);
-        if (!dir.exists() || !dir.isDirectory()) return 0;
-        File[] files = dir.listFiles();
-        if (files == null) return 0;
         int c = 0;
-        for (File f : files) {
-            if (!f.isDirectory() && f.getName().startsWith("song-") && f.getName().endsWith(".dat")) {
+        for (Integer id : validIds) {
+            File f = new File(SONGS_DIR, "song-" + id + ".dat");
+            if (f.exists()) {
                 if (f.length() > 10_000) {
-                    try {
-                        int id = Integer.parseInt(f.getName().substring(5, f.getName().length() - 4));
-                        if (validIds.contains(id)) c++;
-                    } catch (NumberFormatException ignored) {}
+                    c++;
                 } else {
                     AppLogger.log("[PlayerController] Deleting incomplete file: " + f.getName() + " (" + f.length() + " bytes)");
                     f.delete();
@@ -1436,7 +1430,7 @@ public class PlayerController extends Application {
             return 0;
         for (File f : files) {
             if (f.isDirectory()) {
-                count += countExistingDownloadedFiles(f);
+                // skip directories in unified approach
             } else {
                 String name = f.getName();
                 if (name.startsWith("song-") && name.endsWith(".dat")) {
@@ -1452,21 +1446,29 @@ public class PlayerController extends Application {
         return count;
     }
 
-    private void recomputeGlobalCountAndUpdateUI() {
+    private void recomputeGlobalCountAndUpdateUI(boolean isIncremental) {
+        if (isIncremental) {
+            int newTotal = totalDownloadedCounter.incrementAndGet();
+            Platform.runLater(() -> {
+                albumUtil.setSongCount(newTotal);
+            });
+            return;
+        }
+
+        File baseDir = new File(SONGS_DIR);
+        if (!baseDir.exists()) {
+            boolean created = baseDir.mkdirs();
+            AppLogger.log("[PlayerController] Base dir created: " + created);
+        }
+
+        baseDir.setWritable(true, false);
+        baseDir.setReadable(true, false);
+        baseDir.setExecutable(true, false);
+
+        int globalExisting = countExistingDownloadedFiles(baseDir);
+        
+        totalDownloadedCounter.set(globalExisting);
         Platform.runLater(() -> {
-            File baseDir = new File(SONGS_DIR);
-            if (!baseDir.exists()) {
-                boolean created = baseDir.mkdirs();
-                AppLogger.log("[PlayerController] Base dir created: " + created);
-            }
-
-            // Mac installer permissions fix
-            baseDir.setWritable(true, false);
-            baseDir.setReadable(true, false);
-            baseDir.setExecutable(true, false);
-
-            int globalExisting = countExistingDownloadedFiles(baseDir);
-            totalDownloadedCounter.set(globalExisting);
             albumUtil.setSongCount(globalExisting);
         });
     }
@@ -1504,34 +1506,25 @@ public class PlayerController extends Application {
             return;
         }
 
-        // 1. Group tracks by style and shuffle each bucket
-        java.util.Map<String, List<PlaylistTrack>> styleBuckets = new java.util.HashMap<>();
+        // 1. Map ID to Track
+        java.util.Map<Integer, PlaylistTrack> idToTrack = new java.util.HashMap<>();
         for (PlaylistTrack t : tracksToReorder) {
-            String style = t.getFolderTitle();
-            if (style == null || style.isEmpty()) style = "UNKNOWN_STYLE";
-            styleBuckets.computeIfAbsent(style, k -> new ArrayList<>()).add(t);
-        }
-        for (List<PlaylistTrack> bucket : styleBuckets.values()) {
-            java.util.Collections.shuffle(bucket);
+            idToTrack.put(t.getId(), t);
         }
 
-        // 2. Reconstruct queue based on the style pattern derived from the sequence
+        // 2. Reconstruct queue exactly as sequence specifies (allowing duplicates)
         List<PlaylistTrack> reordered = new ArrayList<>();
         java.util.Set<Integer> handledIds = new java.util.HashSet<>();
 
         for (Integer id : sequence) {
-            String style = idToStyleMap.get(id);
-            if (style == null || style.isEmpty()) style = "UNKNOWN_STYLE";
-
-            List<PlaylistTrack> bucket = styleBuckets.get(style);
-            if (bucket != null && !bucket.isEmpty()) {
-                PlaylistTrack pulled = bucket.remove(0); // Pop the first randomized track
-                reordered.add(pulled);
-                handledIds.add(pulled.getId());
+            PlaylistTrack t = idToTrack.get(id);
+            if (t != null) {
+                reordered.add(t);
+                handledIds.add(id);
             }
         }
 
-        // 3. Add any leftovers (e.g. if sequence was missing something, or buckets had extra)
+        // 3. Add any leftovers (e.g. if sequence was missing something)
         for (PlaylistTrack t : tracksToReorder) {
             if (!handledIds.contains(t.getId())) {
                 reordered.add(t);
@@ -1587,7 +1580,7 @@ public class PlayerController extends Application {
                             reorderTracksBySequence(playQueue, currentDownloadSequence);
                         }
 
-                        recomputeGlobalCountAndUpdateUI();
+                        recomputeGlobalCountAndUpdateUI(false);
 
                         if (downloadManager != null) {
                             downloadManager.stop();
@@ -1619,9 +1612,9 @@ public class PlayerController extends Application {
                             }
                         }
 
-                        currentGenreTotalFiles = finalDownloadSeq.size();
-
                         Set<Integer> validIds = new HashSet<>(finalDownloadSeq);
+                        currentGenreTotalFiles = validIds.size();
+
                         int existingInGenre = countExistingSongFiles(validIds);
                         currentGenreDownloadedCount.set(existingInGenre);
 
@@ -1667,6 +1660,8 @@ public class PlayerController extends Application {
                                 }
                             }
 
+                            private long lastProgressUpdateTime = 0;
+
                             @Override
                             public void onDownloadProgress(int songId, long bytesDownloaded, long contentLength) {
                                 double frac = 0.0;
@@ -1680,7 +1675,12 @@ public class PlayerController extends Application {
                                     frac = Math.min(1.0, bytesDownloaded / (1024.0 * 200));
                                 }
                                 currentFileProgressFraction = frac;
-                                updateGenreDownloadLabel(downloadLabel);
+
+                                long now = System.currentTimeMillis();
+                                if (now - lastProgressUpdateTime > 200 || frac >= 1.0) {
+                                    lastProgressUpdateTime = now;
+                                    updateGenreDownloadLabel(downloadLabel);
+                                }
                             }
 
                             // @Override
@@ -1724,51 +1724,51 @@ public class PlayerController extends Application {
 
                             @Override
                             public void onDownloadCompleted(int songId, File outputFile) {
-                                recomputeGlobalCountAndUpdateUI();
+                                asyncExecutor.submit(() -> {
+                                    recomputeGlobalCountAndUpdateUI(true);
+                                    int newGenreCount = currentGenreDownloadedCount.incrementAndGet();
 
-                                Platform.runLater(() -> {
-                                    int newGenreCount = countExistingSongFiles(validIds);
-                                    currentGenreDownloadedCount.set(newGenreCount);
-                                    currentFileProgressFraction = 0.0;
+                                    Platform.runLater(() -> {
+                                        currentFileProgressFraction = 0.0;
+                                        updateGenreDownloadLabel(downloadLabel);
+                                        updatePlayButtonState(controlsWrapper);
+                                        AppLogger.log(
+                                                "[AUTO-PLAY] Downloaded: " + newGenreCount + "/" + currentGenreTotalFiles);
 
-                                    updateGenreDownloadLabel(downloadLabel);
-                                    updatePlayButtonState(controlsWrapper);
-                                    AppLogger.log(
-                                            "[AUTO-PLAY] Downloaded: " + newGenreCount + "/" + currentGenreTotalFiles);
-
-                                    if (vlcPlayer != null && !vlcPlayer.status().isPlaying() && !userPaused) {
-                                        if (consecutiveErrorCount > 3 || newGenreCount >= 2) {
-                                            try {
-                                                AppLogger.log("[AUTO-PLAY] Resuming playback after downloads.");
-                                                consecutiveErrorCount = 0;
-                                                playTrack(
-                                                        albumHeading,
-                                                        titleLabel,
-                                                        progressSlider,
-                                                        leftTime,
-                                                        rightTime,
-                                                        controlsWrapper,
-                                                        bottomBar,
-                                                        downloadLabel,
-                                                        true
-                                                );
-                                            } catch (Exception e) {
-                                                e.printStackTrace();
+                                        if (vlcPlayer != null && !vlcPlayer.status().isPlaying() && !userPaused) {
+                                            if (consecutiveErrorCount > 3 || newGenreCount >= 2) {
+                                                try {
+                                                    AppLogger.log("[AUTO-PLAY] Resuming playback after downloads.");
+                                                    consecutiveErrorCount = 0;
+                                                    playTrack(
+                                                            albumHeading,
+                                                            titleLabel,
+                                                            progressSlider,
+                                                            leftTime,
+                                                            rightTime,
+                                                            controlsWrapper,
+                                                            bottomBar,
+                                                            downloadLabel,
+                                                            true
+                                                    );
+                                                } catch (Exception e) {
+                                                    e.printStackTrace();
+                                                }
                                             }
                                         }
-                                    }
+                                    });
                                 });
                             }
 
                             @Override
                             public void onDownloadSkipped(int songId, File existingFile) {
-                                recomputeGlobalCountAndUpdateUI();
-
-                                int newGenreCount = countExistingSongFiles(validIds);
-                                currentGenreDownloadedCount.set(newGenreCount);
-
-                                updateGenreDownloadLabel(downloadLabel);
-                                updatePlayButtonState(controlsWrapper);
+                                asyncExecutor.submit(() -> {
+                                    // Already accounted for during initial countExistingSongFiles scan
+                                    Platform.runLater(() -> {
+                                        updateGenreDownloadLabel(downloadLabel);
+                                        updatePlayButtonState(controlsWrapper);
+                                    });
+                                });
                             }
 
                             @Override
@@ -1782,23 +1782,23 @@ public class PlayerController extends Application {
                             @Override
                             public void onAllDownloadsFinished() {
                                 AppLogger.log("[PlayerController] All downloads finished for genre: " + playlistName);
-                                setGenreSwitchEnabled(true);
-
-                                recomputeGlobalCountAndUpdateUI();
-                                int newGenreCount = countExistingSongFiles(validIds);
-                                currentGenreDownloadedCount.set(newGenreCount);
-
-                                updatePlayButtonState(controlsWrapper);
+                                asyncExecutor.submit(() -> {
+                                    Platform.runLater(() -> {
+                                        setGenreSwitchEnabled(true);
+                                        updatePlayButtonState(controlsWrapper);
+                                    });
+                                });
                             }
 
                             @Override
                             public void onCancelled() {
                                 AppLogger.log("[PlayerController] Downloads cancelled for genre: " + playlistName);
-                                setGenreSwitchEnabled(true);
-                                recomputeGlobalCountAndUpdateUI();
-                                int newGenreCount = countExistingSongFiles(validIds);
-                                currentGenreDownloadedCount.set(newGenreCount);
-                                updatePlayButtonState(controlsWrapper);
+                                asyncExecutor.submit(() -> {
+                                    Platform.runLater(() -> {
+                                        setGenreSwitchEnabled(true);
+                                        updatePlayButtonState(controlsWrapper);
+                                    });
+                                });
                             }
                         });
 

@@ -327,16 +327,44 @@ public class PlaylistApiService {
                     stylesDownloadTracks.add(styleIds);
                 }
 
-                boolean added;
-                do {
-                    added = false;
-                    for (List<Integer> styleIds : stylesDownloadTracks) {
-                        if (!styleIds.isEmpty()) {
-                            downloadSequence.add(styleIds.remove(0));
-                            added = true;
+                class StyleQueue {
+                    List<Integer> originalIds;
+                    List<Integer> currentQueue;
+
+                    StyleQueue(List<Integer> ids) {
+                        this.originalIds = new ArrayList<>(ids);
+                        this.currentQueue = new ArrayList<>(ids);
+                    }
+
+                    Integer next() {
+                        if (originalIds.isEmpty()) return null;
+                        if (currentQueue.isEmpty()) {
+                            currentQueue = new ArrayList<>(originalIds);
+                            Collections.shuffle(currentQueue);
+                        }
+                        return currentQueue.remove(0);
+                    }
+                }
+
+                List<StyleQueue> styleQueues = new ArrayList<>();
+                int maxSize = 0;
+                for (List<Integer> styleIds : stylesDownloadTracks) {
+                    if (!styleIds.isEmpty()) {
+                        styleQueues.add(new StyleQueue(styleIds));
+                        if (styleIds.size() > maxSize) {
+                            maxSize = styleIds.size();
                         }
                     }
-                } while (added);
+                }
+
+                for (int i = 0; i < maxSize; i++) {
+                    for (StyleQueue sq : styleQueues) {
+                        Integer id = sq.next();
+                        if (id != null) {
+                            downloadSequence.add(id);
+                        }
+                    }
+                }
                 break;
             }
 
