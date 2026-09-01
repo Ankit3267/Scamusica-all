@@ -690,49 +690,121 @@ public class PlayerController extends Application {
                 AppLogger.log("[SYNC] API returned empty sequences (No sequence assigned).");
                 serverSequences = new ArrayList<>();
             } else {
-                    nextSequence = newSequences.get(0);
-                    AppLogger.log("[SYNC] New sequence(s) added detected! Switching immediately to: " + nextSequence);
-                    sequenceSwitched = true;
-                } else if (currentPlaylistName != null && !serverTitles.contains(currentPlaylistName)) {
-                    if (!serverTitles.isEmpty()) {
-                        nextSequence = serverTitles.get(0);
-                        AppLogger.log("[SYNC] Current sequence removed detected! Switching to fallback: " + nextSequence);
-                        sequenceSwitched = true;
-                    }
-                }
+                serverSequences = fetchedSequences;
+            }
 
-                if (!serverTitles.equals(playlistMaster)) {
-                    playlistMaster.clear();
-                    playlistMaster.addAll(serverTitles);
-                    AppLogger.log("[SYNC] Playlist titles updated: " + serverTitles.size());
-                }
+            // Update current sequences list
+            this.currentSequences = new ArrayList<>(serverSequences);
+            List<String> serverTitles = serverSequences.stream().map(PlaylistSequence::getTitle).collect(Collectors.toList());
 
-                // ✅ Cleanup orphaned sequence folders (runs on background thread)
-                final List<String> titlesForCleanup = new ArrayList<>(serverTitles);
+            if (serverTitles.isEmpty()) {
+                AppLogger.log("[SYNC] No sequence assigned. Clearing player and downloads.");
+                
+                final List<String> emptyList = new ArrayList<>();
                 asyncExecutor.submit(() -> {
                     try {
-                        cleanupOrphanedSequences(titlesForCleanup);
+                        cleanupOrphanedSequences(emptyList);
                     } catch (Exception e) {
                         AppLogger.log("[SYNC] Orphaned sequence cleanup failed: " + e.getMessage());
                     }
                 });
 
-                if (sequenceSwitched && nextSequence != null) {
-                    switchToSequence(nextSequence);
-                    return; // Sequence switched, skip track sync for old sequence
-                }
-                
                 Platform.runLater(() -> {
                     try {
-                        playlistViewItems.setAll(
-                                playlistMaster.stream()
-                                        .filter(s -> !s.equals(playlistCurrent[0]))
-                                        .collect(Collectors.toList()));
+                        if (downloadManager != null) {
+                            downloadManager.stop();
+                            downloadManager = null;
+                        }
+                        if (vlcPlayer != null) {
+                            vlcPlayer.controls().stop();
+                        }
+                        
+                        playQueue.clear();
+                        currentDownloadSequence.clear();
+                        idToStyleMap.clear();
+                        playlistMaster.clear();
+                        playlistCurrent[0] = null;
+                        currentPlaylistName = null;
+                        
+                        if (playlistPill != null) {
+                            Label textLabel = (Label) playlistPill.getChildren().get(0);
+                            textLabel.setText("No Sequence");
+                        }
+                        
+                        globalTitleLabel.textProperty().unbind();
+                        globalTitleLabel.setText("No Songs");
+                        globalAlbumHeading.textProperty().unbind();
+                        globalAlbumHeading.setText("No Sequence Assigned");
+                        if (albumImageView != null) {
+                            albumImageView.setImage(defaultAlbumImage);
+                        }
+                        
+                        albumUtil.setSongCount(0);
+                        totalDownloadedCounter.set(0);
+                        currentGenreDownloadedCount.set(0);
+                        currentGenreTotalFiles = 0;
+                        if (globalDownloadLabel != null) {
+                            updateGenreDownloadLabel(globalDownloadLabel);
+                        }
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
                 });
-            // Removed the redundant if (serverTitles != null) check closure 
+                
+                return; // Stop further sync
+            }
+
+            List<String> newSequences = serverTitles.stream()
+                    .filter(title -> !playlistMaster.contains(title))
+                    .collect(Collectors.toList());
+
+            boolean sequenceSwitched = false;
+            String nextSequence = null;
+
+            if (!newSequences.isEmpty()) {
+                nextSequence = newSequences.get(0);
+                AppLogger.log("[SYNC] New sequence(s) added detected! Switching immediately to: " + nextSequence);
+                sequenceSwitched = true;
+            } else if (currentPlaylistName != null && !serverTitles.contains(currentPlaylistName)) {
+                if (!serverTitles.isEmpty()) {
+                    nextSequence = serverTitles.get(0);
+                    AppLogger.log("[SYNC] Current sequence removed detected! Switching to fallback: " + nextSequence);
+                    sequenceSwitched = true;
+                }
+            }
+
+            if (!serverTitles.equals(playlistMaster)) {
+                playlistMaster.clear();
+                playlistMaster.addAll(serverTitles);
+                AppLogger.log("[SYNC] Playlist titles updated: " + serverTitles.size());
+            }
+
+            // ✅ Cleanup orphaned sequence folders (runs on background thread)
+            final List<String> titlesForCleanup = new ArrayList<>(serverTitles);
+            asyncExecutor.submit(() -> {
+                try {
+                    cleanupOrphanedSequences(titlesForCleanup);
+                } catch (Exception e) {
+                    AppLogger.log("[SYNC] Orphaned sequence cleanup failed: " + e.getMessage());
+                }
+            });
+
+            if (sequenceSwitched && nextSequence != null) {
+                switchToSequence(nextSequence);
+                return; // Sequence switched, skip track sync for old sequence
+            }
+            
+            Platform.runLater(() -> {
+                try {
+                    playlistViewItems.setAll(
+                            playlistMaster.stream()
+                                    .filter(s -> !s.equals(playlistCurrent[0]))
+                                    .collect(Collectors.toList()));
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            });
+
         } catch (Exception e) {
             AppLogger.log("[SYNC] Playlist title sync failed: " + e.getMessage());
         }
