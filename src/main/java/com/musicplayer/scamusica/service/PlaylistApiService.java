@@ -3,6 +3,7 @@ package com.musicplayer.scamusica.service;
 import com.google.gson.*;
 import com.musicplayer.scamusica.manager.SessionManager;
 import com.musicplayer.scamusica.model.Ad;
+import com.musicplayer.scamusica.model.PlaylistSequence;
 import com.musicplayer.scamusica.model.PlaylistTrack;
 import com.musicplayer.scamusica.model.VolumeSchedule;
 import com.musicplayer.scamusica.model.VolumeSettings;
@@ -90,52 +91,74 @@ public class PlaylistApiService {
         return root;
     }
 
-    public List<String> fetchPlaylistTitles() throws Exception {
+    public List<PlaylistSequence> fetchPlaylistSequences() throws Exception {
         try {
             JsonObject root = fetchRootJson();
-            List<String> titles = new ArrayList<>();
+            List<PlaylistSequence> result = new ArrayList<>();
 
             if (!root.has("data") || root.get("data").isJsonNull() || !root.get("data").isJsonObject()) {
-                return titles;
+                return result;
             }
 
             JsonObject dataObj = root.getAsJsonObject("data");
 
             if (!dataObj.has("sequences") || !dataObj.get("sequences").isJsonArray()) {
-                return titles;
+                return result;
             }
 
             JsonArray sequences = dataObj.getAsJsonArray("sequences");
 
             for (JsonElement seqEl : sequences) {
-                if (!seqEl.isJsonObject())
-                    continue;
+                if (!seqEl.isJsonObject()) continue;
                 JsonObject seqObj = seqEl.getAsJsonObject();
                 if (seqObj.has("title") && !seqObj.get("title").isJsonNull()) {
                     String seqTitle = seqObj.get("title").getAsString();
                     if (seqTitle != null && !seqTitle.trim().isEmpty()) {
-                        titles.add(seqTitle);
+                        String startTime = seqObj.has("start_time") && !seqObj.get("start_time").isJsonNull() 
+                                ? seqObj.get("start_time").getAsString() : null;
+                        String endTime = seqObj.has("end_time") && !seqObj.get("end_time").isJsonNull() 
+                                ? seqObj.get("end_time").getAsString() : null;
+                                
+                        result.add(new PlaylistSequence(seqTitle, startTime, endTime));
                     }
                 }
             }
 
-            System.out.println("[PlaylistApiService] Playlists from API: " + titles);
+            System.out.println("[PlaylistApiService] Sequences from API: " + result.size());
+            OfflineCache.savePlaylistSequences(result);
 
-            // Always save to cache (including empty list) to reflect current server state
-            OfflineCache.savePlaylistTitles(titles);
-
-            return titles;
+            return result;
 
         } catch (Exception e) {
-            AppLogger.log("[PlaylistApiService] fetchPlaylistTitles failed, loading from cache: " + e.getMessage());
-            List<String> cached = OfflineCache.loadPlaylistTitles();
+            AppLogger.log("[PlaylistApiService] fetchPlaylistSequences failed, loading from cache: " + e.getMessage());
+            List<PlaylistSequence> cached = OfflineCache.loadPlaylistSequences();
             if (!cached.isEmpty()) {
-                AppLogger.log("[PlaylistApiService] Using cached titles: " + cached.size());
+                AppLogger.log("[PlaylistApiService] Using cached sequences: " + cached.size());
                 return cached;
             }
             throw e;
         }
     }
+
+    public List<String> fetchPlaylistTitles() throws Exception {
+        try {
+            List<PlaylistSequence> sequences = fetchPlaylistSequences();
+            List<String> titles = new ArrayList<>();
+            for (PlaylistSequence seq : sequences) {
+                titles.add(seq.getTitle());
+            }
+            OfflineCache.savePlaylistTitles(titles);
+            return titles;
+        } catch (Exception e) {
+            AppLogger.log("[PlaylistApiService] fetchPlaylistTitles failed, loading from cache: " + e.getMessage());
+            List<String> cached = OfflineCache.loadPlaylistTitles();
+            if (!cached.isEmpty()) {
+                return cached;
+            }
+            throw e;
+        }
+    }
+
 
     public List<PlaylistTrack> fetchTracksForGenre(String genreTitle) throws Exception {
         try {

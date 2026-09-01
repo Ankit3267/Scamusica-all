@@ -29,7 +29,7 @@ public class AdScheduler {
     private volatile boolean running = false;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
-    private static final ZoneId SYSTEM_ZONE = ZoneId.systemDefault();
+    private static final ZoneId SYSTEM_ZONE = ZoneId.of("UTC");
 
     private final Map<Integer, LocalTime> lastPlayedTime = new ConcurrentHashMap<>();
     private final Map<String, LocalDate> lastPlayedCustom = new ConcurrentHashMap<>();

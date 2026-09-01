@@ -2,6 +2,7 @@ package com.musicplayer.scamusica.controller;
 
 import com.musicplayer.scamusica.manager.LanguageManager;
 import com.musicplayer.scamusica.model.Ad;
+import com.musicplayer.scamusica.model.PlaylistSequence;
 import com.musicplayer.scamusica.model.PlaylistTrack;
 import com.musicplayer.scamusica.model.VolumeSchedule;
 import com.musicplayer.scamusica.model.VolumeSettings;
@@ -132,6 +133,7 @@ public class PlayerController extends Application {
     private List<Integer> lastServerIds = new ArrayList<>();
     private List<Integer> currentDownloadSequence = new ArrayList<>();
     private java.util.Map<Integer, String> idToStyleMap = new java.util.HashMap<>();
+    private List<PlaylistSequence> currentSequences = new ArrayList<>();
 
     private AdScheduler adScheduler;
     private AdPlayer adPlayer;
@@ -619,6 +621,14 @@ public class PlayerController extends Application {
                 e.printStackTrace();
             }
         }, 0, 30, java.util.concurrent.TimeUnit.SECONDS);
+        
+        schedular.scheduleAtFixedRate(() -> {
+            try {
+                checkAndApplySequenceSchedule();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, 15, 30, java.util.concurrent.TimeUnit.SECONDS);
 
         schedular.scheduleAtFixedRate(() -> {
             try {
@@ -669,82 +679,17 @@ public class PlayerController extends Application {
 
         // ✅ Playlist titles sync with Auto-Switch
         try {
-            List<String> fetchedTitles = apiService.fetchPlaylistTitles();
-            List<String> serverTitles;
+            List<PlaylistSequence> fetchedSequences = apiService.fetchPlaylistSequences();
+            List<PlaylistSequence> serverSequences;
 
-            if (fetchedTitles == null) {
-                serverTitles = new ArrayList<>(java.util.Arrays.asList("Default"));
-                AppLogger.log("[SYNC] API returned null titles, falling back to Default sequence.");
-            } else if (fetchedTitles.isEmpty()) {
-                AppLogger.log("[SYNC] API returned empty titles (No sequence assigned).");
-                serverTitles = new ArrayList<>();
+            if (fetchedSequences == null) {
+                serverSequences = new ArrayList<>();
+                serverSequences.add(new PlaylistSequence("Default", null, null));
+                AppLogger.log("[SYNC] API returned null sequences, falling back to Default sequence.");
+            } else if (fetchedSequences.isEmpty()) {
+                AppLogger.log("[SYNC] API returned empty sequences (No sequence assigned).");
+                serverSequences = new ArrayList<>();
             } else {
-                serverTitles = fetchedTitles;
-            }
-
-            if (serverTitles != null) {
-                if (serverTitles.isEmpty()) {
-                    AppLogger.log("[SYNC] No sequence assigned. Clearing player and downloads.");
-                    
-                    final List<String> emptyList = new ArrayList<>();
-                    asyncExecutor.submit(() -> {
-                        try {
-                            cleanupOrphanedSequences(emptyList);
-                        } catch (Exception e) {
-                            AppLogger.log("[SYNC] Orphaned sequence cleanup failed: " + e.getMessage());
-                        }
-                    });
-
-                    Platform.runLater(() -> {
-                        try {
-                            if (downloadManager != null) {
-                                downloadManager.stop();
-                                downloadManager = null;
-                            }
-                            
-                            stopPlayback(globalProgressSlider, globalLeftTime, globalRightTime, globalControlsWrapper, globalDownloadLabel);
-                            playQueue.clear();
-                            lastServerIds.clear();
-                            playlistMaster.clear();
-                            playlistViewItems.clear();
-                            currentPlaylistName = null;
-                            
-                            if (playlistPill != null) {
-                                Label textLabel = (Label) playlistPill.getChildren().get(0);
-                                textLabel.setText("No Sequence");
-                            }
-                            
-                            globalTitleLabel.textProperty().unbind();
-                            globalTitleLabel.setText("No Songs");
-                            globalAlbumHeading.textProperty().unbind();
-                            globalAlbumHeading.setText("No Sequence Assigned");
-                            if (albumImageView != null) {
-                                albumImageView.setImage(defaultAlbumImage);
-                            }
-                            
-                            albumUtil.setSongCount(0);
-                            totalDownloadedCounter.set(0);
-                            currentGenreDownloadedCount.set(0);
-                            currentGenreTotalFiles = 0;
-                            if (globalDownloadLabel != null) {
-                                updateGenreDownloadLabel(globalDownloadLabel);
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    });
-                    
-                    return; // Stop further sync
-                }
-
-                List<String> newSequences = serverTitles.stream()
-                        .filter(title -> !playlistMaster.contains(title))
-                        .collect(Collectors.toList());
-
-                boolean sequenceSwitched = false;
-                String nextSequence = null;
-
-                if (!newSequences.isEmpty()) {
                     nextSequence = newSequences.get(0);
                     AppLogger.log("[SYNC] New sequence(s) added detected! Switching immediately to: " + nextSequence);
                     sequenceSwitched = true;
@@ -773,49 +718,8 @@ public class PlayerController extends Application {
                 });
 
                 if (sequenceSwitched && nextSequence != null) {
-                    currentPlaylistName = nextSequence;
-                    playlistCurrent[0] = nextSequence;
-                    final String finalNextSeq = nextSequence;
-
-                    // Stop the old download manager BEFORE loading new playlist
-                    if (downloadManager != null) {
-                        downloadManager.stop();
-                        downloadManager = null;
-                    }
-
-                    Platform.runLater(() -> {
-                        try {
-                            if (playlistPill != null) {
-                                Label textLabel = (Label) playlistPill.getChildren().get(0);
-                                textLabel.setText(finalNextSeq);
-                            }
-
-                            playQueue.clear();
-
-                            loadPlaylistAndStart(
-                                    finalNextSeq,
-                                    globalAlbumHeading,
-                                    globalTitleLabel,
-                                    globalProgressSlider,
-                                    globalLeftTime,
-                                    globalRightTime,
-                                    globalControlsWrapper,
-                                    globalBottomBar,
-                                    globalDownloadLabel,
-                                    true
-                            );
-
-                            playlistViewItems.setAll(
-                                    playlistMaster.stream()
-                                            .filter(s -> !s.equals(playlistCurrent[0]))
-                                            .collect(Collectors.toList()));
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    });
-                    
-                    // Sequence switched, so we skip syncing tracks for the old sequence!
-                    return;
+                    switchToSequence(nextSequence);
+                    return; // Sequence switched, skip track sync for old sequence
                 }
                 
                 Platform.runLater(() -> {
@@ -828,7 +732,7 @@ public class PlayerController extends Application {
                         e.printStackTrace();
                     }
                 });
-            }
+            // Removed the redundant if (serverTitles != null) check closure 
         } catch (Exception e) {
             AppLogger.log("[SYNC] Playlist title sync failed: " + e.getMessage());
         }
@@ -1037,6 +941,78 @@ public class PlayerController extends Application {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private void checkAndApplySequenceSchedule() {
+        if (currentSequences == null || currentSequences.isEmpty()) return;
+
+        java.time.LocalTime now = java.time.LocalTime.now(java.time.ZoneId.of("UTC"));
+        PlaylistSequence activeSequence = null;
+
+        for (PlaylistSequence seq : currentSequences) {
+            if (seq.getStartTime() != null && seq.getEndTime() != null) {
+                try {
+                    java.time.LocalTime start = java.time.LocalTime.parse(seq.getStartTime());
+                    java.time.LocalTime end = java.time.LocalTime.parse(seq.getEndTime());
+                    if (!now.isBefore(start) && now.isBefore(end)) {
+                        activeSequence = seq;
+                        break;
+                    }
+                } catch (Exception ex) {
+                    AppLogger.log("[SequenceScheduler] Failed to parse schedule time: " + ex.getMessage());
+                }
+            }
+        }
+
+        if (activeSequence != null && activeSequence.getTitle() != null 
+            && !activeSequence.getTitle().equals(currentPlaylistName)) {
+            AppLogger.log("[SequenceScheduler] Scheduled time reached! Switching to sequence: " + activeSequence.getTitle());
+            switchToSequence(activeSequence.getTitle());
+        }
+    }
+
+    private void switchToSequence(String nextSequence) {
+        if (nextSequence == null || nextSequence.equals(currentPlaylistName)) return;
+
+        currentPlaylistName = nextSequence;
+        playlistCurrent[0] = nextSequence;
+        final String finalNextSeq = nextSequence;
+
+        if (downloadManager != null) {
+            downloadManager.stop();
+            downloadManager = null;
+        }
+
+        Platform.runLater(() -> {
+            try {
+                if (playlistPill != null) {
+                    Label textLabel = (Label) playlistPill.getChildren().get(0);
+                    textLabel.setText(finalNextSeq);
+                }
+
+                playQueue.clear();
+
+                loadPlaylistAndStart(
+                        finalNextSeq,
+                        globalAlbumHeading,
+                        globalTitleLabel,
+                        globalProgressSlider,
+                        globalLeftTime,
+                        globalRightTime,
+                        globalControlsWrapper,
+                        globalBottomBar,
+                        globalDownloadLabel,
+                        true
+                );
+
+                playlistViewItems.setAll(
+                        playlistMaster.stream()
+                                .filter(s -> !s.equals(playlistCurrent[0]))
+                                .collect(Collectors.toList()));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     private void initializeAdSystem() {
@@ -2630,7 +2606,7 @@ public class PlayerController extends Application {
     private void checkAndApplyVolumeSchedule() {
         if (currentVolumeSettings == null) return;
         
-        java.time.LocalTime now = java.time.LocalTime.now();
+        java.time.LocalTime now = java.time.LocalTime.now(java.time.ZoneId.of("UTC"));
         VolumeSchedule activeSchedule = null;
 
         if (currentVolumeSettings.getSchedules() != null) {

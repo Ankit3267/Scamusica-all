@@ -2,6 +2,7 @@ package com.musicplayer.scamusica.util;
 
 import com.google.gson.*;
 import com.musicplayer.scamusica.model.Ad;
+import com.musicplayer.scamusica.model.PlaylistSequence;
 import com.musicplayer.scamusica.model.PlaylistTrack;
 import com.musicplayer.scamusica.model.VolumeSettings;
 
@@ -31,6 +32,7 @@ public class OfflineCache {
     private static final String TITLES_FILE = "playlist_titles.json";
     private static final String TRACKS_PREFIX = "tracks_";
     private static final String SEQ_PREFIX = "download_seq_";
+    private static final String PLAYLIST_SEQUENCES_FILE = "playlist_sequences.json";
 
     private static final Gson GSON = new Gson();
 
@@ -83,6 +85,39 @@ public class OfflineCache {
             return titles != null ? titles : new ArrayList<>();
         } catch (Exception e) {
             AppLogger.log("[OfflineCache] Failed to load titles: " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PLAYLIST SEQUENCES — save & load
+    // ════════════════════════════════════════════════════════════════════════
+
+    public static void savePlaylistSequences(List<PlaylistSequence> sequences) {
+        try {
+            File file = new File(getCacheDir(), PLAYLIST_SEQUENCES_FILE);
+            String json = GSON.toJson(sequences);
+            Files.write(file.toPath(), json.getBytes(StandardCharsets.UTF_8));
+            AppLogger.log("[OfflineCache] Playlist sequences saved: " + sequences.size());
+        } catch (Exception e) {
+            AppLogger.log("[OfflineCache] Failed to save sequences: " + e.getMessage());
+        }
+    }
+
+    public static List<PlaylistSequence> loadPlaylistSequences() {
+        try {
+            File file = new File(getCacheDir(), PLAYLIST_SEQUENCES_FILE);
+            if (!file.exists()) {
+                AppLogger.log("[OfflineCache] No cached sequences found");
+                return new ArrayList<>();
+            }
+            String json = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+            Type type = new TypeToken<List<PlaylistSequence>>(){}.getType();
+            List<PlaylistSequence> sequences = GSON.fromJson(json, type);
+            AppLogger.log("[OfflineCache] Loaded cached sequences: " + (sequences != null ? sequences.size() : 0));
+            return sequences != null ? sequences : new ArrayList<>();
+        } catch (Exception e) {
+            AppLogger.log("[OfflineCache] Failed to load sequences: " + e.getMessage());
             return new ArrayList<>();
         }
     }
