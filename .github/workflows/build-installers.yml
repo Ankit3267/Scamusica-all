@@ -221,6 +221,7 @@
 #           path: ${{ env.PROJECT_PATH }}/artifacts/**
 
 
+
 name: Build Installer (Windows)
 
 on:
