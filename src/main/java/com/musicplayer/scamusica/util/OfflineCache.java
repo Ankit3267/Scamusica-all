@@ -337,4 +337,21 @@ public class OfflineCache {
             AppLogger.log("[OfflineCache] Failed to remove cache for: " + sequenceName + " - " + e.getMessage());
         }
     }
+
+    public static void savePlayerName(String name) {
+        try {
+            File file = new File(getCacheDir(), "player_name.txt");
+            Files.write(file.toPath(), name.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {}
+    }
+
+    public static String loadPlayerName() {
+        try {
+            File file = new File(getCacheDir(), "player_name.txt");
+            if (file.exists()) {
+                return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+            }
+        } catch (Exception e) {}
+        return "";
+    }
 }

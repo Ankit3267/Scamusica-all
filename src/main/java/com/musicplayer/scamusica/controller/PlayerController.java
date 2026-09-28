@@ -1138,7 +1138,7 @@ public class PlayerController extends Application {
                 Platform.runLater(() -> {
                     try {
                         synchronized (playQueue) {
-                            if (!playQueue.isEmpty() && currentTrackIndex < playQueue.size()) {
+                            if (!playQueue.isEmpty() && currentTrackIndex >= 0 && currentTrackIndex < playQueue.size()) {
                                 PlaylistTrack track = playQueue.get(currentTrackIndex);
                                 if (track != null) {
                                     globalTitleLabel.textProperty().unbind();
@@ -1190,7 +1190,7 @@ public class PlayerController extends Application {
 
                 Platform.runLater(() -> {
                     try {
-                        if (!playQueue.isEmpty() && currentTrackIndex < playQueue.size()) {
+                        if (!playQueue.isEmpty() && currentTrackIndex >= 0 && currentTrackIndex < playQueue.size()) {
                             PlaylistTrack track = playQueue.get(currentTrackIndex);
 
                             String baseDownloadDir = System.getProperty("user.home")
@@ -1332,6 +1332,11 @@ public class PlayerController extends Application {
                                         globalProgressSlider, null, null,
                                         globalControlsWrapper, globalBottomBar, null);
                             }
+                        } else {
+                            AppLogger.log("[AdPlayer] No track to resume. Playing next.");
+                            playNextTrack(globalAlbumHeading, globalTitleLabel,
+                                    globalProgressSlider, null, null,
+                                    globalControlsWrapper, globalBottomBar, null);
                         }
                     } catch (Exception e) {
                         e.printStackTrace();

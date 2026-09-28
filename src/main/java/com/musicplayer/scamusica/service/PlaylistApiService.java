@@ -86,6 +86,17 @@ public class PlaylistApiService {
         }
 
         JsonObject root = JsonParser.parseString(response).getAsJsonObject();
+
+        if (root.has("data") && root.get("data").isJsonObject()) {
+            JsonObject dataObj = root.getAsJsonObject("data");
+            if (dataObj.has("player") && dataObj.get("player").isJsonObject()) {
+                JsonObject playerObj = dataObj.getAsJsonObject("player");
+                if (playerObj.has("title") && !playerObj.get("title").isJsonNull()) {
+                    OfflineCache.savePlayerName(playerObj.get("title").getAsString());
+                }
+            }
+        }
+
         cachedRootJson = root;
         cacheTimestamp = now;
         return root;

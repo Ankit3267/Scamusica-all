@@ -414,7 +414,7 @@ public class CodeVerificationController extends Application {
         bottomBar.setAlignment(Pos.CENTER);
         bottomBar.setStyle("-fx-background-color: transparent;");
 
-        Label version= new Label("Version 11 Scamusica@2025");
+        Label version= new Label("Version " + com.musicplayer.scamusica.util.AppConfig.APP_VERSION + " Scamusica@2025");
         version.setTextFill(Color.WHITE);
         bottomBar.getChildren().add(version);
         root.setBottom(bottomBar);*/

@@ -3,7 +3,9 @@ package com.musicplayer.scamusica.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.musicplayer.scamusica.manager.DeviceFingerprint;
 import com.musicplayer.scamusica.manager.SessionManager;
+import com.musicplayer.scamusica.model.PlaylistTrack;
 import com.musicplayer.scamusica.util.AppLogger;
+import com.musicplayer.scamusica.util.OfflineCache;
 import com.musicplayer.scamusica.util.Utility;
 
 import javax.net.ssl.SSLContext;
@@ -16,6 +18,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.security.KeyStore;
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -84,7 +89,7 @@ public class HeartbeatService {
             return t;
         });
 
-        // Send immediately, then every 30 minutes
+        // Send immediately, then every 15 minutes
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 sendHeartbeat();
@@ -132,11 +137,42 @@ public class HeartbeatService {
         String osName = System.getProperty("os.name").toLowerCase();
         String deviceType = osName.contains("win") ? "Windows" : (osName.contains("mac") ? "Mac" : "Raspberry");
 
+        // Calculate downloaded songs
+        int downloadedSongs = 0;
+        File baseDir = new File(System.getProperty("user.home") + File.separator + ".scamusica" + File.separator + "songs");
+        if (baseDir.exists() && baseDir.isDirectory()) {
+            File[] files = baseDir.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    if (f.isFile() && f.getName().startsWith("song-") && f.getName().endsWith(".dat")) {
+                        downloadedSongs++;
+                    }
+                }
+            }
+        }
+
+        // Calculate total songs
+        Set<Integer> uniqueTrackIds = new HashSet<>();
+        List<String> titles = OfflineCache.loadPlaylistTitles();
+        if (titles != null) {
+            for (String title : titles) {
+                List<PlaylistTrack> tracks = OfflineCache.loadTracks(title);
+                if (tracks != null) {
+                    for (PlaylistTrack track : tracks) {
+                        uniqueTrackIds.add(track.getId());
+                    }
+                }
+            }
+        }
+        int totalSongs = uniqueTrackIds.size();
+
         try {
             String url = Utility.BASE_URL.get() + Utility.PLAYER_HEARTBEAT.get();
             String json = "{"
                     + "\"deviceId\": \"" + deviceId + "\","
-                    + "\"deviceType\": \"" + deviceType + "\""
+                    + "\"deviceType\": \"" + deviceType + "\","
+                    + "\"downloadedSongs\": " + downloadedSongs + ","
+                    + "\"totalSongs\": " + totalSongs
                     + "}";
 
             HttpRequest request = HttpRequest.newBuilder()
