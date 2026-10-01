@@ -2691,7 +2691,15 @@ public class PlayerController extends Application {
                 try {
                     java.time.LocalTime start = java.time.LocalTime.parse(schedule.getStartTime());
                     java.time.LocalTime end = java.time.LocalTime.parse(schedule.getEndTime());
-                    if (!now.isBefore(start) && now.isBefore(end)) {
+                    
+                    boolean isActive = false;
+                    if (start.isBefore(end)) {
+                        isActive = !now.isBefore(start) && now.isBefore(end);
+                    } else {
+                        isActive = !now.isBefore(start) || now.isBefore(end);
+                    }
+                    
+                    if (isActive) {
                         activeSchedule = schedule;
                         break;
                     }
@@ -2709,7 +2717,9 @@ public class PlayerController extends Application {
 
         final boolean isVolumeFromAdmin = currentVolumeSettings.getMusicVolume() != null &&
                 currentVolumeSettings.getVolumeSource() != null &&
-                ("admin".equalsIgnoreCase(currentVolumeSettings.getVolumeSource()) || "player".equalsIgnoreCase(currentVolumeSettings.getVolumeSource()));
+                ("admin".equalsIgnoreCase(currentVolumeSettings.getVolumeSource()) ||
+                 "group".equalsIgnoreCase(currentVolumeSettings.getVolumeSource()) || 
+                 "player".equalsIgnoreCase(currentVolumeSettings.getVolumeSource()));
         final boolean isScheduleActive = activeSchedule != null;
         final boolean shouldDisableSlider = isVolumeFromAdmin || isScheduleActive;
 
