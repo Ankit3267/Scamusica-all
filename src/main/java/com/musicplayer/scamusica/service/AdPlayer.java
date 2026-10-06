@@ -40,6 +40,7 @@ public class AdPlayer {
 
     private volatile String savedSongPath = null;
     private volatile long savedSongTime = 0L;
+    private volatile Ad currentAd = null;
 
     private java.util.function.Supplier<Integer> adVolumeProvider;
 
@@ -76,7 +77,18 @@ public class AdPlayer {
             return;
 
         AppLogger.log("[AdPlayer] Queueing " + playableAds.size() + " playable ads");
-        List<Ad> shuffled = new ArrayList<>(playableAds);
+        List<Ad> toAdd = new ArrayList<>();
+        for (Ad ad : playableAds) {
+            boolean inQueue = adQueue.stream().anyMatch(a -> a.getId() != null && a.getId().equals(ad.getId()));
+            boolean isPlaying = currentAd != null && currentAd.getId() != null && currentAd.getId().equals(ad.getId());
+            if (!inQueue && !isPlaying) {
+                toAdd.add(ad);
+            } else {
+                AppLogger.log("[AdPlayer] Ad already queued or playing, skipping duplicate: " + ad.getCampaignName());
+            }
+        }
+
+        List<Ad> shuffled = new ArrayList<>(toAdd);
         Collections.shuffle(shuffled);
         adQueue.addAll(shuffled);
 
@@ -111,6 +123,7 @@ public class AdPlayer {
     }
 
     private void playAdInternal(Ad ad) throws Exception {
+        currentAd = ad;
         AppLogger.log("[AdPlayer] Preparing ad: " + ad.getCampaignName());
 
         if (!songPausedForAds) {
@@ -270,6 +283,7 @@ public class AdPlayer {
         }
 
         // Step 6: Ad done, notify
+        currentAd = null;
         Platform.runLater(() -> listener.onAdPlaybackFinished(ad));
         // Note: Loop handles next ad
     }
@@ -326,6 +340,7 @@ public class AdPlayer {
 
     public void clearQueue() {
         adQueue.clear();
+        currentAd = null;
         AppLogger.log("[AdPlayer] Queue cleared");
     }
 

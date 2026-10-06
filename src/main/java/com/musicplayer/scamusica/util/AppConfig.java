@@ -1,5 +1,5 @@
 package com.musicplayer.scamusica.util;
 
 public class AppConfig {
-    public static final String APP_VERSION = "1.0.7";
+    public static final String APP_VERSION = "1.0.8";
 }
