@@ -94,8 +94,10 @@ public class AdScheduler {
                     }
                 });
             } else {
-                lastPlayedTime.clear();
-                lastPlayedCustom.clear();
+                // Don't clear tracking maps on null input — this preserves
+                // dedup state in case of temporary network errors.
+                // The allAds list is already empty, so no new ads will be scheduled.
+                AppLogger.log("[AdScheduler] updateAds called with null — keeping dedup state");
             }
         }
         AppLogger.log("[AdScheduler] Updated with " + allAds.size() + " ads");

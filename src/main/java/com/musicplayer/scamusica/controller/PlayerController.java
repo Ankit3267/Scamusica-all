@@ -655,6 +655,7 @@ public class PlayerController extends Application {
 
     private void syncWithServer() {
         AppLogger.log("[SYNC] Checking server updates for playlist: " + currentPlaylistName);
+        apiService.clearCache();
 
         if (!NetworkMonitor.getInstance().isOnline()) {
             AppLogger.log("[SYNC] Offline — aborting sync");
@@ -1089,6 +1090,7 @@ public class PlayerController extends Application {
 
     private void initializeAdSystem() {
         AppLogger.log("[PlayerController] Initializing Ad System");
+        apiService.clearCache();
 
         // 1. Create AdPlayer with listeners
         adPlayer = new AdPlayer(vlcPlayer, new AdPlayer.AdPlaybackListener() {
@@ -1168,20 +1170,6 @@ public class PlayerController extends Application {
             @Override
             public void onSongPaused(String reason) {
                 AppLogger.log("[AdPlayer] Song paused: " + reason);
-                Platform.runLater(() -> {
-                    try {
-                        if (globalBottomBar != null && controlsUtil != null) {
-                            Slider volumeSlider = controlsUtil.getVolumeSlider(globalBottomBar);
-                            if (volumeSlider != null) {
-                                double savedPrefVol = prefs.getDouble(PREF_VOLUME, 85.0);
-                                volumeSlider.setValue(getCurrentAdVolume());
-                                prefs.putDouble(PREF_VOLUME, savedPrefVol);
-                            }
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                });
             }
 
             @Override
@@ -1193,17 +1181,7 @@ public class PlayerController extends Application {
                         if (!playQueue.isEmpty() && currentTrackIndex >= 0 && currentTrackIndex < playQueue.size()) {
                             PlaylistTrack track = playQueue.get(currentTrackIndex);
 
-                            String baseDownloadDir = System.getProperty("user.home")
-                                    + File.separator + ".scamusica"
-                                    + File.separator + "downloads";
-
-                            String genreFolder = (currentPlaylistName != null)
-                                    ? currentPlaylistName.replaceAll("\\s+", "_")
-                                    : track.getFolderTitle().replaceAll("\\s+", "_");
-
-                            File encryptedFile = new File(baseDownloadDir
-                                    + File.separator + genreFolder,
-                                    "song-" + track.getId() + ".dat");
+                            File encryptedFile = new File(SONGS_DIR, "song-" + track.getId() + ".dat");
 
                             if (encryptedFile.exists()) {
                                 AppLogger
@@ -1417,9 +1395,6 @@ public class PlayerController extends Application {
             allAds = new ArrayList<>(serverAds);
             if (adScheduler != null) {
                 adScheduler.updateAds(allAds);
-            }
-            if (adPlayer != null && !adPlayer.isPlayingAd()) {
-                adPlayer.clearQueue();
             }
             OfflineCache.saveAdSchedule(allAds);
             if (!allAds.isEmpty()) {
@@ -2272,6 +2247,9 @@ public class PlayerController extends Application {
 
             @Override
             public void stopped(MediaPlayer mediaPlayer) {
+                if (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds())) {
+                    return;
+                }
                 Platform.runLater(() -> {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {
@@ -2323,7 +2301,7 @@ public class PlayerController extends Application {
             @Override
             public void finished(MediaPlayer mediaPlayer) {
 
-                if (adPlayer != null && adPlayer.isPlayingAd()) {
+                if (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds())) {
                     AppLogger.log("[PLAYER] Media finished but ad is active, ignoring");
                     return;
                 }
@@ -2352,6 +2330,9 @@ public class PlayerController extends Application {
 
             @Override
             public void error(MediaPlayer mediaPlayer) {
+                if (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds())) {
+                    return;
+                }
                 AppLogger.log("[PLAYER] VLC encountered an error during playback (skipped API DB log).");
                 
                 consecutiveErrorCount++;
@@ -2743,6 +2724,8 @@ public class PlayerController extends Application {
                 ? activeSchedule.getAdVolume()
                 : (currentVolumeSettings.getAdVolume() != null ? currentVolumeSettings.getAdVolume() : 100);
         
+        currentAdVolume = newAdVolume;
+
         int currentSetVol = (int) prefs.getDouble(PREF_VOLUME, 100.0);
         boolean volumeNeedsUpdate = (newMusicVolume != currentSetVol);
         boolean scheduleChanged = isFirstVolumeApply || !java.util.Objects.equals(currentScheduleId, targetScheduleId);
@@ -2750,8 +2733,6 @@ public class PlayerController extends Application {
         if (scheduleChanged || (shouldDisableSlider && volumeNeedsUpdate)) {
             currentScheduleId = targetScheduleId;
             isFirstVolumeApply = false;
-
-            currentAdVolume = newAdVolume;
 
             AppLogger.log("[VolumeScheduler] Applying new volume settings: Music=" + newMusicVolume + ", Ad="
                     + newAdVolume);

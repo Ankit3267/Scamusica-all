@@ -112,9 +112,11 @@ public class AdPlayer {
                 }
             }
             AppLogger.log("[AdPlayer] Queue empty, resuming song");
-            isPlayingAd = false;
-            songPausedForAds = false;
             resumeSong();
+            // Set flags AFTER resumeSong() to prevent the global VLC listener
+            // from triggering playNextTrack() during the race window
+            songPausedForAds = false;
+            isPlayingAd = false;
         });
     }
 
@@ -336,6 +338,10 @@ public class AdPlayer {
 
     public boolean isPlayingAd() {
         return isPlayingAd;
+    }
+
+    public boolean isSongPausedForAds() {
+        return songPausedForAds;
     }
 
     public void clearQueue() {
