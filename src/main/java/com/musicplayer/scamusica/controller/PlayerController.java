@@ -1211,7 +1211,7 @@ public class PlayerController extends Application {
                                                 }
                                             });
 
-                                            vlcPlayer.media().play(tempFile.toURI().toString(), startTimeOpt);
+                                            vlcPlayer.media().play(tempFile.getAbsolutePath(), startTimeOpt);
                                             vlcPlayer.audio().setVolume(0);
 
                                             schedular.schedule(() -> {

@@ -307,7 +307,7 @@ public class AdPlayer {
         File localFile = AdDownloadManager.getLocalAdFile(adAudio);
         if (localFile != null && localFile.exists() && localFile.length() > 1024) {
             AppLogger.log("[AdPlayer] Playing ad from local file: " + localFile.getAbsolutePath());
-            return localFile.toURI().toString();
+            return localFile.getAbsolutePath();
         }
 
         if (!NetworkMonitor.getInstance().isOnline()) {
