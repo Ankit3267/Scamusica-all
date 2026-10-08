@@ -113,10 +113,6 @@ public class AdPlayer {
             }
             AppLogger.log("[AdPlayer] Queue empty, resuming song");
             resumeSong();
-            // Set flags AFTER resumeSong() to prevent the global VLC listener
-            // from triggering playNextTrack() during the race window
-            songPausedForAds = false;
-            isPlayingAd = false;
         });
     }
 
@@ -296,6 +292,10 @@ public class AdPlayer {
                 listener.onSongResumed();
             } catch (Exception e) {
                 AppLogger.log("[AdPlayer] Resume error: " + e.getMessage());
+            } finally {
+                // Reset flags inside the JavaFX thread after resume is triggered
+                songPausedForAds = false;
+                isPlayingAd = false;
             }
         });
     }
@@ -307,7 +307,7 @@ public class AdPlayer {
         File localFile = AdDownloadManager.getLocalAdFile(adAudio);
         if (localFile != null && localFile.exists() && localFile.length() > 1024) {
             AppLogger.log("[AdPlayer] Playing ad from local file: " + localFile.getAbsolutePath());
-            return localFile.getAbsolutePath();
+            return localFile.toURI().toString();
         }
 
         if (!NetworkMonitor.getInstance().isOnline()) {
