@@ -60,8 +60,8 @@ public class PlayerController extends Application {
     private Label globalRightTime;
     private Label globalDownloadLabel;
 
-    private MediaPlayer vlcPlayer;
-    private AudioPlayerComponent vlcPlayerComponent;
+    private volatile MediaPlayer vlcPlayer;
+    private volatile AudioPlayerComponent vlcPlayerComponent;
     private boolean vlcHandlersAttached = false;
     private boolean userPaused = false;
 
