@@ -226,6 +226,11 @@ public class AdPlayer {
                             @Override
                             public void playing(MediaPlayer mediaPlayer) {
                                 started = true;
+                                if (adVolumeProvider != null) {
+                                    int targetAdVol = adVolumeProvider.get();
+                                    mediaPlayer.audio().setVolume(targetAdVol);
+                                    AppLogger.log("[AdPlayer] Applied ad volume during playback: " + targetAdVol);
+                                }
                             }
 
                             @Override

@@ -503,6 +503,10 @@ public class PlayerController extends Application {
             vlcPlayer.audio().setVolume((int) savedVolume);
 
             volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+                if (adPlayer != null && adPlayer.isPlayingAd()) {
+                    vlcPlayer.audio().setVolume(newVal.intValue());
+                    return;
+                }
                 prefs.putDouble(PREF_VOLUME, newVal.doubleValue());
                 vlcPlayer.audio().setVolume(newVal.intValue());
             });
@@ -1121,6 +1125,12 @@ public class PlayerController extends Application {
                             globalProgressSlider.setDisable(true);
                             globalProgressSlider.setMouseTransparent(true);
                         }
+                        if (globalBottomBar != null && controlsUtil != null) {
+                            Slider volumeSlider = controlsUtil.getVolumeSlider(globalBottomBar);
+                            if (volumeSlider != null) {
+                                volumeSlider.setValue(currentAdVolume);
+                            }
+                        }
                         if (globalControlsWrapper != null) {
                             globalControlsWrapper.setDisable(true);
                         }
@@ -1308,12 +1318,29 @@ public class PlayerController extends Application {
                                 }, 1500, TimeUnit.MILLISECONDS);
                             } else {
                                 AppLogger.log("[AdPlayer] Cannot resume — offline and no local file. Playing next.");
+                                int musicVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
+                                AppLogger.log("[AdPlayer] Restoring music volume to: " + musicVol);
+                                if (vlcPlayer != null && vlcPlayer.audio() != null) {
+                                    vlcPlayer.audio().setVolume(musicVol);
+                                }
                                 playNextTrack(globalAlbumHeading, globalTitleLabel,
                                         globalProgressSlider, null, null,
                                         globalControlsWrapper, globalBottomBar, null);
                             }
                         } else {
                             AppLogger.log("[AdPlayer] No track to resume. Playing next.");
+                            // Restore music volume before playing next track
+                            int musicVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
+                            AppLogger.log("[AdPlayer] Restoring music volume to: " + musicVol);
+                            if (vlcPlayer != null && vlcPlayer.audio() != null) {
+                                vlcPlayer.audio().setVolume(musicVol);
+                            }
+                            if (globalBottomBar != null && controlsUtil != null) {
+                                Slider volumeSlider = controlsUtil.getVolumeSlider(globalBottomBar);
+                                if (volumeSlider != null) {
+                                    volumeSlider.setValue(musicVol);
+                                }
+                            }
                             playNextTrack(globalAlbumHeading, globalTitleLabel,
                                     globalProgressSlider, null, null,
                                     globalControlsWrapper, globalBottomBar, null);
@@ -2230,6 +2257,24 @@ public class PlayerController extends Application {
                     if (ledVuMeter != null) {
                         ledVuMeter.start();
                     }
+                    // ✅ Enforce correct music volume when a song starts playing
+                    // (not during ad playback — the AdPlayer manages its own volume)
+                    if (adPlayer == null || !adPlayer.isPlayingAd()) {
+                        int musicVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
+                        if (asyncExecutor != null) {
+                            asyncExecutor.submit(() -> {
+                                try {
+                                    Thread.sleep(500); // Give VLC time to initialize audio
+                                    int currentVlcVol = mediaPlayer.audio().volume();
+                                    if (currentVlcVol < 0 || Math.abs(currentVlcVol - musicVol) > 2) {
+                                        AppLogger.log("[PLAYER] Volume drift detected (VLC=" + currentVlcVol 
+                                            + ", expected=" + musicVol + "), correcting");
+                                        mediaPlayer.audio().setVolume(musicVol);
+                                    }
+                                } catch (Exception ignored) {}
+                            });
+                        }
+                    }
                 });
             }
 
@@ -2729,7 +2774,16 @@ public class PlayerController extends Application {
         currentAdVolume = newAdVolume;
 
         int currentSetVol = (int) prefs.getDouble(PREF_VOLUME, 100.0);
-        boolean volumeNeedsUpdate = (newMusicVolume != currentSetVol);
+        // Also check actual VLC volume — after ad playback VLC may still be at ad volume
+        // even though PREF_VOLUME is correct
+        int actualVlcVol = -1;
+        try {
+            if (vlcPlayer != null && vlcPlayer.audio() != null) {
+                actualVlcVol = vlcPlayer.audio().volume();
+            }
+        } catch (Exception ignored) {}
+        boolean vlcVolumeDrifted = (actualVlcVol >= 0 && Math.abs(actualVlcVol - newMusicVolume) > 2);
+        boolean volumeNeedsUpdate = (newMusicVolume != currentSetVol) || vlcVolumeDrifted;
         boolean scheduleChanged = isFirstVolumeApply || !java.util.Objects.equals(currentScheduleId, targetScheduleId);
 
         if (scheduleChanged || (shouldDisableSlider && volumeNeedsUpdate)) {
