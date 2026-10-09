@@ -112,266 +112,266 @@
 
 
 
-#   ##############################
-#   # WINDOWS
-#   ##############################
-#   build-windows:
-#     runs-on: windows-latest
-
-#     steps:
-#       - name: Checkout repo
-#         uses: actions/checkout@v4
-
-#       - name: Setup JDK 17
-#         uses: actions/setup-java@v4
-#         with:
-#           distribution: 'temurin'
-#           java-version: '17'
-#           cache: 'maven'
-
-#       - name: Build on Windows
-#         working-directory: ${{ env.PROJECT_PATH }}
-#         shell: pwsh
-#         run: |
-#           if (Test-Path mvnw.cmd) {
-#             ./mvnw.cmd -B -D.version=${Env:APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
-#           } else {
-#             mvn -B -D.version=${Env:APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
-#           }
-
-#       - name: Import SSL certificate (Windows)
-#         working-directory: ${{ env.PROJECT_PATH }}
-#         shell: pwsh
-#         run: |
-#           $runtime = "target/ScamusicaRuntime"
-#           $cert1 = "certs/api1_fullchain.crt"
-#           $cert2 = "certs/api2_fullchain.crt"
-
-#           if (-Not (Test-Path $cert1)) { Write-Error "Cert not found $cert1"; exit 1 }
-#           if (-Not (Test-Path $cert2)) { Write-Error "Cert not found $cert2"; exit 1 }
-
-#           & "$runtime\bin\keytool.exe" -importcert -noprompt `
-#             -alias scamusica-api-rtas `
-#             -storepass changeit `
-#             -file $cert1 `
-#             -keystore "$runtime\lib\security\cacerts"
-
-#           & "$runtime\bin\keytool.exe" -importcert -noprompt `
-#             -alias scamusica-api-rtvk `
-#             -storepass changeit `
-#             -file $cert2 `
-#             -keystore "$runtime\lib\security\cacerts"
-
-#           Write-Host "Both certificates imported successfully"
-
-#       - name: Collect Windows artifacts
-#         working-directory: ${{ env.PROJECT_PATH }}
-#         shell: pwsh
-#         run: |
-#           mkdir artifacts -ea 0
-#           if (Test-Path target\installer) { cp -Recurse target\installer\* artifacts\ }
-#           ls artifacts
-
-#       - name: Upload Windows artifacts
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: scamusica-windows
-#           path: ${{ env.PROJECT_PATH }}\artifacts\**
-
-
-#   ##############################
-#   # MACOS
-#   ##############################
-#   build-macos:
-#     runs-on: macos-12
-
-#     steps:
-#       - name: Checkout repo
-#         uses: actions/checkout@v4
-
-#       - name: Setup JDK 17
-#         uses: actions/setup-java@v4
-#         with:
-#           distribution: temurin
-#           java-version: 17
-#           cache: maven
-
-#       - name: Build (macOS)
-#         working-directory: ${{ env.PROJECT_PATH }}
-#         run: |
-#           if [ -f mvnw ]; then
-#             chmod +x mvnw
-#             ./mvnw -B -D.version=${APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
-#           else
-#             mvn -B -D.version=${APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
-#           fi
-
-#       - name: Collect macOS artifacts
-#         working-directory: ${{ env.PROJECT_PATH }}
-#         run: |
-#           mkdir -p artifacts
-#           cp -r target/installer/* artifacts/ 2>/dev/null || true
-#           cp target/*.dmg artifacts/ 2>/dev/null || true
-#           ls -la artifacts
-
-#       - name: Upload macOS artifacts
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: scamusica-macos
-#           path: ${{ env.PROJECT_PATH }}/artifacts/**
-
-
-
-name: Build Installer (Windows)
-
-on:
-  workflow_dispatch:
-
-env:
-  PROJECT_PATH: .
-  APP_VERSION: 1.0.0
-
-jobs:
+  ##############################
+  # WINDOWS
+  ##############################
   build-windows:
-    name: Build Windows EXE Installer
     runs-on: windows-latest
 
     steps:
-      - name: Checkout sources
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Temurin JDK 17
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Build on Windows
+        working-directory: ${{ env.PROJECT_PATH }}
+        shell: pwsh
+        run: |
+          if (Test-Path mvnw.cmd) {
+            ./mvnw.cmd -B -D.version=${Env:APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
+          } else {
+            mvn -B -D.version=${Env:APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
+          }
+
+      - name: Import SSL certificate (Windows)
+        working-directory: ${{ env.PROJECT_PATH }}
+        shell: pwsh
+        run: |
+          $runtime = "target/ScamusicaRuntime"
+          $cert1 = "certs/api1_fullchain.crt"
+          $cert2 = "certs/api2_fullchain.crt"
+
+          if (-Not (Test-Path $cert1)) { Write-Error "Cert not found $cert1"; exit 1 }
+          if (-Not (Test-Path $cert2)) { Write-Error "Cert not found $cert2"; exit 1 }
+
+          & "$runtime\bin\keytool.exe" -importcert -noprompt `
+            -alias scamusica-api-rtas `
+            -storepass changeit `
+            -file $cert1 `
+            -keystore "$runtime\lib\security\cacerts"
+
+          & "$runtime\bin\keytool.exe" -importcert -noprompt `
+            -alias scamusica-api-rtvk `
+            -storepass changeit `
+            -file $cert2 `
+            -keystore "$runtime\lib\security\cacerts"
+
+          Write-Host "Both certificates imported successfully"
+
+      - name: Collect Windows artifacts
+        working-directory: ${{ env.PROJECT_PATH }}
+        shell: pwsh
+        run: |
+          mkdir artifacts -ea 0
+          if (Test-Path target\installer) { cp -Recurse target\installer\* artifacts\ }
+          ls artifacts
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: scamusica-windows
+          path: ${{ env.PROJECT_PATH }}\artifacts\**
+
+
+  ##############################
+  # MACOS
+  ##############################
+  build-macos:
+    runs-on: macos-12
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
           cache: maven
 
-      # ── 1. JAR build ─────────────────────────────────────────────────
-      - name: Build JAR
+      - name: Build (macOS)
         working-directory: ${{ env.PROJECT_PATH }}
-        shell: bash
         run: |
-          chmod +x mvnw || true
-          ./mvnw -B -DskipTests clean compile jar:jar
-          echo "=== target/ contents ==="
-          ls -lh target
+          if [ -f mvnw ]; then
+            chmod +x mvnw
+            ./mvnw -B -D.version=${APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
+          else
+            mvn -B -D.version=${APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
+          fi
 
-      # ── 2. Custom JRE via jlink ───────────────────────────────────────
-      - name: Create runtime with jlink
+      - name: Collect macOS artifacts
         working-directory: ${{ env.PROJECT_PATH }}
-        shell: bash
         run: |
-          ./mvnw -B javafx:jlink
-          echo "=== scamusica-runtime created ==="
-          ls -lh target/scamusica-runtime
+          mkdir -p artifacts
+          cp -r target/installer/* artifacts/ 2>/dev/null || true
+          cp target/*.dmg artifacts/ 2>/dev/null || true
+          ls -la artifacts
 
-      # ── 3. SSL certs import ───────────────────────────────────────────
-      - name: Import SSL certificates
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
-        run: |
-          $kt   = "target\scamusica-runtime\bin\keytool.exe"
-          $ks   = "target\scamusica-runtime\lib\security\cacerts"
-          $pass = "changeit"
-
-          Write-Host "--- Importing API certs ---"
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias api1      -file "certs\api1_fullchain.crt"
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias api2      -file "certs\api2_fullchain.crt"
-
-          Write-Host "--- Importing CIS Root CA ---"
-          & $kt -delete     -alias cis-root  -keystore $ks -storepass $pass -noprompt 2>$null
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias cis-root  -file "certs\ca 9.crt"
-
-          Write-Host "--- Importing new certs ---"
-          & $kt -delete     -alias new-cert-1 -keystore $ks -storepass $pass -noprompt 2>$null
-          & $kt -delete     -alias new-cert-2 -keystore $ks -storepass $pass -noprompt 2>$null
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias new-cert-1 -file "certs\ca-10.crt"
-          & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias new-cert-2 -file "certs\Fortinet_CA_SSLProxy_new-7.cer"
-
-          Write-Host "All certs imported successfully"
-
-      # ── 4. VLC download on runner (Linux pe nahi hota isliye yahan) ──
-      - name: Download and extract VLC for Windows
-        shell: pwsh
-        run: |
-          $vlcVersion = "3.0.21"
-          $vlcUrl     = "https://download.videolan.org/vlc/$vlcVersion/win64/vlc-$vlcVersion-win64.zip"
-          $zipPath    = "$env:TEMP\vlc.zip"
-          $extractDir = "$env:TEMP\vlc-extracted"
-
-          Write-Host "Downloading VLC $vlcVersion..."
-          Invoke-WebRequest -Uri $vlcUrl -OutFile $zipPath
-
-          Write-Host "Extracting..."
-          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-
-          # Extracted folder ka naam hoga vlc-3.0.21 — uska content vlc/ mein copy karo
-          $vlcSourceDir = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1 -ExpandProperty FullName
-          Write-Host "VLC source dir: $vlcSourceDir"
-
-          # Project root mein vlc/ folder banao
-          New-Item -ItemType Directory -Force -Path "vlc" | Out-Null
-          Copy-Item -Recurse -Force "$vlcSourceDir\*" "vlc\"
-
-          Write-Host "=== vlc/ folder contents ==="
-          Get-ChildItem "vlc" | Select-Object Name
-
-      # ── 5. jpackage → APP_IMAGE ───────────────────────────────────────
-      - name: Build app-image via Maven jpackage
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
-        run: |
-          ./mvnw -B jpackage:jpackage
-          Write-Host "=== target/ after app-image ==="
-          Get-ChildItem "target" | Select-Object Name, Attributes
-
-      # ── 6. VLC copy into app-image ────────────────────────────────────
-      - name: Copy VLC into app-image
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
-        run: |
-          $appImage = "target\Scamusica"
-
-          if (-not (Test-Path $appImage)) {
-            Write-Host "=== DEBUG: target/ mein kya hai ==="
-            Get-ChildItem "target"
-            Write-Error "App-image folder 'target\Scamusica' not found!"
-            exit 1
-          }
-
-          Copy-Item -Recurse -Force "vlc" "$appImage\"
-          Write-Host "VLC copied into $appImage"
-          Write-Host "=== App-image contents ==="
-          Get-ChildItem "$appImage" | Select-Object Name
-
-      # ── 7. Final EXE from app-image ───────────────────────────────────
-      - name: Build final EXE installer
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "target\final-installer" | Out-Null
-
-          jpackage `
-            --type        exe `
-            --dest        "target\final-installer" `
-            --name        "Scamusica" `
-            --app-version "$env:APP_VERSION" `
-            --app-image   "target\Scamusica" `
-            --win-menu `
-            --win-shortcut `
-            --win-dir-chooser `
-            --win-upgrade-uuid "e72a8c3d-6b1e-4f5a-9c8d-2a1b3c4d5e6f"
-
-          Write-Host "=== Final installer ==="
-          Get-ChildItem "target\final-installer"
-
-      # ── 8. Upload ─────────────────────────────────────────────────────
-      - name: Upload EXE artifact
+      - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: scamusica-windows-${{ env.APP_VERSION }}
-          path: target\final-installer\*.exe
+          name: scamusica-macos
+          path: ${{ env.PROJECT_PATH }}/artifacts/**
+
+
+
+# name: Build Installer (Windows)
+
+# on:
+#   workflow_dispatch:
+
+# env:
+#   PROJECT_PATH: .
+#   APP_VERSION: 1.0.0
+
+# jobs:
+#   build-windows:
+#     name: Build Windows EXE Installer
+#     runs-on: windows-latest
+
+#     steps:
+#       - name: Checkout sources
+#         uses: actions/checkout@v4
+
+#       - name: Setup Temurin JDK 17
+#         uses: actions/setup-java@v4
+#         with:
+#           distribution: temurin
+#           java-version: 17
+#           cache: maven
+
+#       # ── 1. JAR build ─────────────────────────────────────────────────
+#       - name: Build JAR
+#         working-directory: ${{ env.PROJECT_PATH }}
+#         shell: bash
+#         run: |
+#           chmod +x mvnw || true
+#           ./mvnw -B -DskipTests clean compile jar:jar
+#           echo "=== target/ contents ==="
+#           ls -lh target
+
+#       # ── 2. Custom JRE via jlink ───────────────────────────────────────
+#       - name: Create runtime with jlink
+#         working-directory: ${{ env.PROJECT_PATH }}
+#         shell: bash
+#         run: |
+#           ./mvnw -B javafx:jlink
+#           echo "=== scamusica-runtime created ==="
+#           ls -lh target/scamusica-runtime
+
+#       # ── 3. SSL certs import ───────────────────────────────────────────
+#       - name: Import SSL certificates
+#         working-directory: ${{ env.PROJECT_PATH }}
+#         shell: pwsh
+#         run: |
+#           $kt   = "target\scamusica-runtime\bin\keytool.exe"
+#           $ks   = "target\scamusica-runtime\lib\security\cacerts"
+#           $pass = "changeit"
+
+#           Write-Host "--- Importing API certs ---"
+#           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias api1      -file "certs\api1_fullchain.crt"
+#           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias api2      -file "certs\api2_fullchain.crt"
+
+#           Write-Host "--- Importing CIS Root CA ---"
+#           & $kt -delete     -alias cis-root  -keystore $ks -storepass $pass -noprompt 2>$null
+#           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias cis-root  -file "certs\ca 9.crt"
+
+#           Write-Host "--- Importing new certs ---"
+#           & $kt -delete     -alias new-cert-1 -keystore $ks -storepass $pass -noprompt 2>$null
+#           & $kt -delete     -alias new-cert-2 -keystore $ks -storepass $pass -noprompt 2>$null
+#           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias new-cert-1 -file "certs\ca-10.crt"
+#           & $kt -importcert -trustcacerts -keystore $ks -storepass $pass -noprompt -alias new-cert-2 -file "certs\Fortinet_CA_SSLProxy_new-7.cer"
+
+#           Write-Host "All certs imported successfully"
+
+#       # ── 4. VLC download on runner (Linux pe nahi hota isliye yahan) ──
+#       - name: Download and extract VLC for Windows
+#         shell: pwsh
+#         run: |
+#           $vlcVersion = "3.0.21"
+#           $vlcUrl     = "https://download.videolan.org/vlc/$vlcVersion/win64/vlc-$vlcVersion-win64.zip"
+#           $zipPath    = "$env:TEMP\vlc.zip"
+#           $extractDir = "$env:TEMP\vlc-extracted"
+
+#           Write-Host "Downloading VLC $vlcVersion..."
+#           Invoke-WebRequest -Uri $vlcUrl -OutFile $zipPath
+
+#           Write-Host "Extracting..."
+#           Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+
+#           # Extracted folder ka naam hoga vlc-3.0.21 — uska content vlc/ mein copy karo
+#           $vlcSourceDir = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1 -ExpandProperty FullName
+#           Write-Host "VLC source dir: $vlcSourceDir"
+
+#           # Project root mein vlc/ folder banao
+#           New-Item -ItemType Directory -Force -Path "vlc" | Out-Null
+#           Copy-Item -Recurse -Force "$vlcSourceDir\*" "vlc\"
+
+#           Write-Host "=== vlc/ folder contents ==="
+#           Get-ChildItem "vlc" | Select-Object Name
+
+#       # ── 5. jpackage → APP_IMAGE ───────────────────────────────────────
+#       - name: Build app-image via Maven jpackage
+#         working-directory: ${{ env.PROJECT_PATH }}
+#         shell: pwsh
+#         run: |
+#           ./mvnw -B jpackage:jpackage
+#           Write-Host "=== target/ after app-image ==="
+#           Get-ChildItem "target" | Select-Object Name, Attributes
+
+#       # ── 6. VLC copy into app-image ────────────────────────────────────
+#       - name: Copy VLC into app-image
+#         working-directory: ${{ env.PROJECT_PATH }}
+#         shell: pwsh
+#         run: |
+#           $appImage = "target\Scamusica"
+
+#           if (-not (Test-Path $appImage)) {
+#             Write-Host "=== DEBUG: target/ mein kya hai ==="
+#             Get-ChildItem "target"
+#             Write-Error "App-image folder 'target\Scamusica' not found!"
+#             exit 1
+#           }
+
+#           Copy-Item -Recurse -Force "vlc" "$appImage\"
+#           Write-Host "VLC copied into $appImage"
+#           Write-Host "=== App-image contents ==="
+#           Get-ChildItem "$appImage" | Select-Object Name
+
+#       # ── 7. Final EXE from app-image ───────────────────────────────────
+#       - name: Build final EXE installer
+#         working-directory: ${{ env.PROJECT_PATH }}
+#         shell: pwsh
+#         run: |
+#           New-Item -ItemType Directory -Force -Path "target\final-installer" | Out-Null
+
+#           jpackage `
+#             --type        exe `
+#             --dest        "target\final-installer" `
+#             --name        "Scamusica" `
+#             --app-version "$env:APP_VERSION" `
+#             --app-image   "target\Scamusica" `
+#             --win-menu `
+#             --win-shortcut `
+#             --win-dir-chooser `
+#             --win-upgrade-uuid "e72a8c3d-6b1e-4f5a-9c8d-2a1b3c4d5e6f"
+
+#           Write-Host "=== Final installer ==="
+#           Get-ChildItem "target\final-installer"
+
+#       # ── 8. Upload ─────────────────────────────────────────────────────
+#       - name: Upload EXE artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: scamusica-windows-${{ env.APP_VERSION }}
+#           path: target\final-installer\*.exe
 
 # name: Build Installer (macOS Apple Silicon) 
  
