@@ -115,68 +115,68 @@
   ##############################
   # WINDOWS
   ##############################
-  build-windows:
-    runs-on: windows-latest
+  # build-windows:
+  #   runs-on: windows-latest
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+  #   steps:
+  #     - name: Checkout repo
+  #       uses: actions/checkout@v4
 
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'maven'
+  #     - name: Setup JDK 17
+  #       uses: actions/setup-java@v4
+  #       with:
+  #         distribution: 'temurin'
+  #         java-version: '17'
+  #         cache: 'maven'
 
-      - name: Build on Windows
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
-        run: |
-          if (Test-Path mvnw.cmd) {
-            ./mvnw.cmd -B -D.version=${Env:APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
-          } else {
-            mvn -B -D.version=${Env:APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
-          }
+  #     - name: Build on Windows
+  #       working-directory: ${{ env.PROJECT_PATH }}
+  #       shell: pwsh
+  #       run: |
+  #         if (Test-Path mvnw.cmd) {
+  #           ./mvnw.cmd -B -D.version=${Env:APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
+  #         } else {
+  #           mvn -B -D.version=${Env:APP_VERSION} -DskipTests clean package javafx:jlink jpackage:jpackage
+  #         }
 
-      - name: Import SSL certificate (Windows)
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
-        run: |
-          $runtime = "target/ScamusicaRuntime"
-          $cert1 = "certs/api1_fullchain.crt"
-          $cert2 = "certs/api2_fullchain.crt"
+  #     - name: Import SSL certificate (Windows)
+  #       working-directory: ${{ env.PROJECT_PATH }}
+  #       shell: pwsh
+  #       run: |
+  #         $runtime = "target/ScamusicaRuntime"
+  #         $cert1 = "certs/api1_fullchain.crt"
+  #         $cert2 = "certs/api2_fullchain.crt"
 
-          if (-Not (Test-Path $cert1)) { Write-Error "Cert not found $cert1"; exit 1 }
-          if (-Not (Test-Path $cert2)) { Write-Error "Cert not found $cert2"; exit 1 }
+  #         if (-Not (Test-Path $cert1)) { Write-Error "Cert not found $cert1"; exit 1 }
+  #         if (-Not (Test-Path $cert2)) { Write-Error "Cert not found $cert2"; exit 1 }
 
-          & "$runtime\bin\keytool.exe" -importcert -noprompt `
-            -alias scamusica-api-rtas `
-            -storepass changeit `
-            -file $cert1 `
-            -keystore "$runtime\lib\security\cacerts"
+  #         & "$runtime\bin\keytool.exe" -importcert -noprompt `
+  #           -alias scamusica-api-rtas `
+  #           -storepass changeit `
+  #           -file $cert1 `
+  #           -keystore "$runtime\lib\security\cacerts"
 
-          & "$runtime\bin\keytool.exe" -importcert -noprompt `
-            -alias scamusica-api-rtvk `
-            -storepass changeit `
-            -file $cert2 `
-            -keystore "$runtime\lib\security\cacerts"
+  #         & "$runtime\bin\keytool.exe" -importcert -noprompt `
+  #           -alias scamusica-api-rtvk `
+  #           -storepass changeit `
+  #           -file $cert2 `
+  #           -keystore "$runtime\lib\security\cacerts"
 
-          Write-Host "Both certificates imported successfully"
+  #         Write-Host "Both certificates imported successfully"
 
-      - name: Collect Windows artifacts
-        working-directory: ${{ env.PROJECT_PATH }}
-        shell: pwsh
-        run: |
-          mkdir artifacts -ea 0
-          if (Test-Path target\installer) { cp -Recurse target\installer\* artifacts\ }
-          ls artifacts
+  #     - name: Collect Windows artifacts
+  #       working-directory: ${{ env.PROJECT_PATH }}
+  #       shell: pwsh
+  #       run: |
+  #         mkdir artifacts -ea 0
+  #         if (Test-Path target\installer) { cp -Recurse target\installer\* artifacts\ }
+  #         ls artifacts
 
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: scamusica-windows
-          path: ${{ env.PROJECT_PATH }}\artifacts\**
+  #     - name: Upload Windows artifacts
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: scamusica-windows
+  #         path: ${{ env.PROJECT_PATH }}\artifacts\**
 
 
   ##############################
