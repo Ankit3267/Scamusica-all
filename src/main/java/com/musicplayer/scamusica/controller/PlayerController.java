@@ -182,7 +182,6 @@ public class PlayerController extends Application {
         startupDelayer.schedule(() -> MemoryWatchdog.getInstance().start(), 60, java.util.concurrent.TimeUnit.SECONDS);
         startupDelayer.schedule(() -> HeartbeatService.getInstance().start(), 30, java.util.concurrent.TimeUnit.SECONDS);
         startupDelayer.schedule(() -> LogSyncService.getInstance().start(), 30, java.util.concurrent.TimeUnit.SECONDS);
-        startupDelayer.schedule(this::initializeAdSystem, 5, java.util.concurrent.TimeUnit.SECONDS);
 
         String appDir = System.getProperty("user.dir");
         String vlcPath = appDir + File.separator + "vlc";
@@ -198,6 +197,9 @@ public class PlayerController extends Application {
 
         vlcPlayerComponent = new AudioPlayerComponent();
         vlcPlayer = vlcPlayerComponent.mediaPlayer();
+        
+        // Initialize AdSystem only AFTER vlcPlayer is fully ready
+        startupDelayer.schedule(this::initializeAdSystem, 5, java.util.concurrent.TimeUnit.SECONDS);
 
         Button headphonesButton = sidebarUtil.createIconButton("fas-headphones");
         List<Button> sidebarButtons = Arrays.asList(headphonesButton);
