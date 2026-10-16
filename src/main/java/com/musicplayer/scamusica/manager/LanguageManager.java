@@ -112,16 +112,20 @@ public class LanguageManager {
                 }
 
                 HBox box = new HBox(8);
-                ImageView img = new ImageView(new Image(
-                        Objects.requireNonNull(getClass().getResourceAsStream(item.iconPath()))
-                ));
-                img.setFitWidth(20);
-                img.setFitHeight(15);
+                try {
+                    java.io.InputStream is = getClass().getResourceAsStream(item.iconPath());
+                    if (is != null) {
+                        ImageView img = new ImageView(new Image(is));
+                        img.setFitWidth(20);
+                        img.setFitHeight(15);
+                        box.getChildren().add(img);
+                    }
+                } catch (Exception ignored) {}
 
                 Label lbl = new Label(item.name());
                 lbl.setStyle("-fx-text-fill: black; -fx-font-size: 14px;");
 
-                box.getChildren().addAll(img, lbl);
+                box.getChildren().add(lbl);
                 setGraphic(box);
             }
         });
@@ -138,16 +142,20 @@ public class LanguageManager {
                 }
 
                 HBox box = new HBox(8);
-                ImageView img = new ImageView(new Image(
-                        Objects.requireNonNull(getClass().getResourceAsStream(item.iconPath()))
-                ));
-                img.setFitWidth(22);
-                img.setFitHeight(16);
+                try {
+                    java.io.InputStream is = getClass().getResourceAsStream(item.iconPath());
+                    if (is != null) {
+                        ImageView img = new ImageView(new Image(is));
+                        img.setFitWidth(22);
+                        img.setFitHeight(16);
+                        box.getChildren().add(img);
+                    }
+                } catch (Exception ignored) {}
 
                 Label lbl = new Label(item.name());
                 lbl.setStyle("-fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: 600;");
 
-                box.getChildren().addAll(img, lbl);
+                box.getChildren().add(lbl);
                 setGraphic(box);
             }
         });

@@ -21,6 +21,8 @@ import java.util.Locale;
 
 import com.musicplayer.scamusica.service.LogSyncService;
 import com.musicplayer.scamusica.util.AppLogger;
+import com.musicplayer.scamusica.util.VlcHelper;
+import javafx.scene.control.Alert;
 
 public class Main extends Application {
     @Override
@@ -29,10 +31,8 @@ public class Main extends Application {
         Stage splashStage = createSplashStage();
         splashStage.show();
 
-        // Setup VLC JNA path
-        String appDir = System.getProperty("user.dir");
-        String vlcPath = appDir + java.io.File.separator + "vlc";
-        System.setProperty("jna.library.path", vlcPath);
+        // Setup VLC native library and plugins path across platforms
+        VlcHelper.init();
 
         // 2. Run heavy initialization on a background thread so the splash
         //    has time to render before we proceed to the main UI.
@@ -55,9 +55,16 @@ public class Main extends Application {
                             CodeVerificationController codeVerificationController = new CodeVerificationController();
                             codeVerificationController.start(primaryStage);
                         }
-                    } catch (Exception e) {
+                    } catch (Throwable e) {
                         AppLogger.log("[Main] Failed to start application: " + e.getMessage());
                         e.printStackTrace();
+                        Platform.runLater(() -> {
+                            Alert alert = new Alert(Alert.AlertType.ERROR);
+                            alert.setTitle("Scamusica - Application Error");
+                            alert.setHeaderText("Failed to launch application");
+                            alert.setContentText("Error: " + e.getClass().getSimpleName() + "\n" + e.getMessage());
+                            alert.show();
+                        });
                     } finally {
                         // 3. Close splash after real UI is shown
                         splashStage.close();

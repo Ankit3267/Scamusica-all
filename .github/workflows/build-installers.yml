@@ -434,7 +434,7 @@ jobs:
 
           jlink \
             --module-path "$JAVA_HOME/jmods:$JFX_PATH" \
-            --add-modules java.base,java.desktop,java.logging,java.net.http,jdk.crypto.ec,jdk.crypto.cryptoki,javafx.controls,javafx.fxml,javafx.media \
+            --add-modules java.base,java.desktop,java.logging,java.net.http,java.prefs,jdk.unsupported,java.management,java.naming,java.sql,java.xml,jdk.crypto.ec,jdk.crypto.cryptoki,javafx.controls,javafx.fxml,javafx.media \
             --output target/scamusica-runtime \
             --strip-debug \
             --no-man-pages \
@@ -477,7 +477,28 @@ jobs:
             -keystore target/scamusica-runtime/lib/security/cacerts \
             -storepass changeit | grep -E "cis-root|new-cert-1|new-cert-2" || true
 
-      - name: Package DMG
+      - name: Download and extract VLC (macOS ARM64)
+        working-directory: ${{ env.PROJECT_PATH }}
+        run: |
+          echo "📥 Downloading VLC for macOS ARM64..."
+          curl -L -o vlc.dmg "https://downloads.videolan.org/videolan/vlc/3.0.21/macosx/vlc-3.0.21-arm64.dmg"
+
+          echo "📦 Mounting VLC DMG..."
+          hdiutil attach vlc.dmg -mountpoint /Volumes/VLC
+
+          mkdir -p target/vlc/lib
+          mkdir -p target/vlc/plugins
+          cp -R /Volumes/VLC/VLC.app/Contents/MacOS/lib/* target/vlc/lib/
+          cp -R /Volumes/VLC/VLC.app/Contents/MacOS/plugins/* target/vlc/plugins/
+
+          echo "🧹 Detaching VLC DMG..."
+          hdiutil detach /Volumes/VLC
+          rm -f vlc.dmg
+
+          echo "✅ Extracted VLC files:"
+          ls -lh target/vlc/lib
+
+      - name: Build App Image
         working-directory: ${{ env.PROJECT_PATH }}
         run: |
           JAR_NAME=$(ls target/Scamusica-*.jar | grep -v original | head -1 | xargs basename)
@@ -489,9 +510,12 @@ jobs:
 
           echo "✅ Using JAR: $JAR_NAME"
 
+          rm -rf target/app-image
+          mkdir -p target/app-image
+
           jpackage \
-            --type dmg \
-            --dest target \
+            --type app-image \
+            --dest target/app-image \
             --name Scamusica \
             --app-version "${APP_VERSION}" \
             --input target \
@@ -501,9 +525,37 @@ jobs:
             --icon src/main/resources/scamusica.icns \
             --mac-package-name Scamusica \
             --mac-package-identifier com.scamusica.player \
-            --java-options "-Dhttps.protocols=TLSv1.2,TLSv1.3 -Dprism.order=sw"
+            --java-options "-Dhttps.protocols=TLSv1.2,TLSv1.3"
 
-          echo "📦 DMG created:"
+          echo "📦 App Image created:"
+          ls -lh target/app-image
+
+      - name: Bundle VLC into App Image
+        working-directory: ${{ env.PROJECT_PATH }}
+        run: |
+          echo "📦 Bundling VLC into Scamusica.app..."
+          mkdir -p target/app-image/Scamusica.app/Contents/app/vlc
+          cp -R target/vlc/* target/app-image/Scamusica.app/Contents/app/vlc/
+
+          echo "✅ Verified bundled VLC in Scamusica.app:"
+          ls -lh target/app-image/Scamusica.app/Contents/app/vlc/lib
+
+      - name: Package Final DMG
+        working-directory: ${{ env.PROJECT_PATH }}
+        run: |
+          rm -f target/*.dmg
+
+          jpackage \
+            --type dmg \
+            --dest target \
+            --name Scamusica \
+            --app-version "${APP_VERSION}" \
+            --app-image target/app-image/Scamusica.app \
+            --icon src/main/resources/scamusica.icns \
+            --mac-package-name Scamusica \
+            --mac-package-identifier com.scamusica.player
+
+          echo "📦 Final DMG created:"
           ls -lh target/*.dmg
 
       - name: Upload DMG

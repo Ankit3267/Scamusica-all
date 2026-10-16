@@ -55,24 +55,28 @@ public class CodeVerificationController extends Application {
         // UI Elements
         root = new BorderPane();
         // Load the background image
-        Image background = new Image(getClass().getResource("/images/background.jpg").toExternalForm()); // Path to background image
-
-        // Create BackgroundImage and BackgroundSize
-        BackgroundSize backgroundSize = new BackgroundSize(
-                BackgroundSize.AUTO, BackgroundSize.AUTO, // Width and height
-                true, false, // Contain and Cover
-                true, // Proportional
-                true // Fill width
-        );
-        BackgroundImage backgroundImage = new BackgroundImage(
-                background,
-                BackgroundRepeat.NO_REPEAT,
-                BackgroundRepeat.NO_REPEAT,
-                BackgroundPosition.CENTER,
-                backgroundSize
-        );
-        // Create Background and set it to the BorderPane
-        root.setBackground(new Background(backgroundImage));
+        try {
+            java.net.URL bgUrl = getClass().getResource("/images/background.jpg");
+            if (bgUrl != null) {
+                Image background = new Image(bgUrl.toExternalForm());
+                BackgroundSize backgroundSize = new BackgroundSize(
+                        BackgroundSize.AUTO, BackgroundSize.AUTO, // Width and height
+                        true, false, // Contain and Cover
+                        true, // Proportional
+                        true // Fill width
+                );
+                BackgroundImage backgroundImage = new BackgroundImage(
+                        background,
+                        BackgroundRepeat.NO_REPEAT,
+                        BackgroundRepeat.NO_REPEAT,
+                        BackgroundPosition.CENTER,
+                        backgroundSize
+                );
+                root.setBackground(new Background(backgroundImage));
+            }
+        } catch (Exception e) {
+            AppLogger.log("[CodeVerification] Could not load background image: " + e.getMessage());
+        }
 
         header = new HBox(15);
         header.setPadding(new Insets(15, 50, 15, 50));

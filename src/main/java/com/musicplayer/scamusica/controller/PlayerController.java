@@ -12,6 +12,7 @@ import com.musicplayer.scamusica.ui.*;
 import com.musicplayer.scamusica.util.AppLogger;
 import com.musicplayer.scamusica.util.CryptoUtil;
 import com.musicplayer.scamusica.util.PlaybackHistoryLogger;
+import com.musicplayer.scamusica.util.VlcHelper;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
@@ -183,9 +184,7 @@ public class PlayerController extends Application {
         startupDelayer.schedule(() -> HeartbeatService.getInstance().start(), 30, java.util.concurrent.TimeUnit.SECONDS);
         startupDelayer.schedule(() -> LogSyncService.getInstance().start(), 30, java.util.concurrent.TimeUnit.SECONDS);
 
-        String appDir = System.getProperty("user.dir");
-        String vlcPath = appDir + File.separator + "vlc";
-        System.setProperty("jna.library.path", vlcPath);
+        VlcHelper.init();
 
         // Pre-fetch API data concurrently
         java.util.concurrent.CompletableFuture.runAsync(() -> {
@@ -195,11 +194,23 @@ public class PlayerController extends Application {
             }
         });
 
-        vlcPlayerComponent = new AudioPlayerComponent();
-        vlcPlayer = vlcPlayerComponent.mediaPlayer();
-        
-        // Initialize AdSystem only AFTER vlcPlayer is fully ready
-        startupDelayer.schedule(this::initializeAdSystem, 5, java.util.concurrent.TimeUnit.SECONDS);
+        try {
+            vlcPlayerComponent = new AudioPlayerComponent();
+            vlcPlayer = vlcPlayerComponent.mediaPlayer();
+            // Initialize AdSystem only AFTER vlcPlayer is fully ready
+            startupDelayer.schedule(this::initializeAdSystem, 5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Throwable t) {
+            AppLogger.log("[PlayerController] Failed to initialize VLC AudioPlayerComponent: " + t.getMessage());
+            t.printStackTrace();
+            Platform.runLater(() -> {
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setTitle("Scamusica - Audio Engine Error");
+                alert.setHeaderText("Unable to initialize VLC Media Player engine");
+                alert.setContentText("The audio engine failed to load: " + t.getMessage()
+                        + "\n\nPlease ensure VLC is properly installed or contact support.");
+                alert.show();
+            });
+        }
 
         Button headphonesButton = sidebarUtil.createIconButton("fas-headphones");
         List<Button> sidebarButtons = Arrays.asList(headphonesButton);

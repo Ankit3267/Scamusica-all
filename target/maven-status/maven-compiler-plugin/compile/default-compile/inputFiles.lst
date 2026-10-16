@@ -1,3 +1,4 @@
+/windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/AppLauncher.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/Main.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/TestDownload.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/controller/CodeVerificationController.java
@@ -10,6 +11,7 @@
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/manager/SessionManager.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/model/Ad.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/model/AdAudio.java
+/windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/model/PlaylistSequence.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/model/PlaylistTrack.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/model/VolumeSchedule.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/model/VolumeSettings.java
@@ -36,6 +38,7 @@
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/ui/PlayerHeader.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/ui/PlayerSidebar.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/ApiClient.java
+/windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/AppConfig.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/AppLogger.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/CryptoUtil.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/DeviceUtil.java
@@ -45,4 +48,5 @@
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/OfflineCache.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/PlaybackHistoryLogger.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/Utility.java
+/windows/sca-musica-player/Scamusica-all-master/src/main/java/com/musicplayer/scamusica/util/VlcHelper.java
 /windows/sca-musica-player/Scamusica-all-master/src/main/java/module-info.java
