@@ -544,12 +544,21 @@ jobs:
           echo "📦 App Image created:"
           ls -lh target/app-image
 
-      - name: Bundle VLC into App Image
+      - name: Bundle VLC and Re-sign App Image
         working-directory: ${{ env.PROJECT_PATH }}
         run: |
           echo "📦 Bundling VLC into Scamusica.app..."
           mkdir -p target/app-image/Scamusica.app/Contents/app/vlc
           cp -R target/vlc/* target/app-image/Scamusica.app/Contents/app/vlc/
+
+          echo "🔧 Setting permissions on bundled VLC..."
+          chmod -R u+w,a+rX target/app-image/Scamusica.app/Contents/app/vlc
+
+          echo "🔏 Re-signing Scamusica.app with ad-hoc signature..."
+          codesign --force --deep --sign - target/app-image/Scamusica.app
+
+          echo "🔍 Verifying code signature..."
+          codesign --verify --deep --strict --verbose=2 target/app-image/Scamusica.app || true
 
           echo "✅ Verified bundled VLC in Scamusica.app:"
           ls -lh target/app-image/Scamusica.app/Contents/app/vlc/lib
@@ -744,12 +753,21 @@ jobs:
 #          echo "📦 App Image created:"
 #          ls -lh target/app-image
 #
-#      - name: Bundle VLC into App Image
+#      - name: Bundle VLC and Re-sign App Image
 #        working-directory: ${{ env.PROJECT_PATH }}
 #        run: |
 #          echo "📦 Bundling VLC into Scamusica.app..."
 #          mkdir -p target/app-image/Scamusica.app/Contents/app/vlc
 #          cp -R target/vlc/* target/app-image/Scamusica.app/Contents/app/vlc/
+#
+#          echo "🔧 Setting permissions on bundled VLC..."
+#          chmod -R u+w,a+rX target/app-image/Scamusica.app/Contents/app/vlc
+#
+#          echo "🔏 Re-signing Scamusica.app with ad-hoc signature..."
+#          codesign --force --deep --sign - target/app-image/Scamusica.app
+#
+#          echo "🔍 Verifying code signature..."
+#          codesign --verify --deep --strict --verbose=2 target/app-image/Scamusica.app || true
 #
 #          echo "✅ Verified bundled VLC in Scamusica.app:"
 #          ls -lh target/app-image/Scamusica.app/Contents/app/vlc/lib
