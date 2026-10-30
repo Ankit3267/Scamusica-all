@@ -187,7 +187,7 @@ public class PlayerControls {
         FontIcon volLow = new FontIcon("fas-volume-down");
         volLow.setIconSize(14);
         volLow.getStyleClass().add("volume-icon");
-        Slider volumeSlider = new Slider(0, 100, 50);
+        Slider volumeSlider = new Slider(0, 100, 70);
         volumeSlider.setPrefWidth(260);
         volumeSlider.setMinWidth(60);
         volumeSlider.setMaxWidth(260);

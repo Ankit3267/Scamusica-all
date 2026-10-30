@@ -127,7 +127,7 @@ public class AdPlayer {
         if (!songPausedForAds) {
             // Step 1: Save current song state
             final long[] timeRef = { 0L };
-            final int[] volRef = { 100 };
+            final int[] volRef = { 70 };
             CountDownLatch stateLatch = new CountDownLatch(1);
             Platform.runLater(() -> {
                 try {
@@ -146,7 +146,7 @@ public class AdPlayer {
                 AppLogger.log("[AdPlayer] State fetch interrupted");
             }
             savedSongTime = timeRef[0];
-            int originalVol = volRef[0];
+            int originalVol = Math.max(0, Math.min(100, volRef[0]));
             try {
                 int steps = 20;
                 for (int i = 0; i < steps; i++) {
@@ -174,7 +174,7 @@ public class AdPlayer {
                     vlcPlayer.controls().pause();
                     listener.onSongPaused("Ad starting");
                     
-                    int targetAdVol = (adVolumeProvider != null) ? adVolumeProvider.get() : originalVol;
+                    int targetAdVol = (adVolumeProvider != null) ? Math.max(0, Math.min(100, adVolumeProvider.get())) : originalVol;
                     AppLogger.log("[AdPlayer] Setting ad volume to: " + targetAdVol);
                     vlcPlayer.audio().setVolume(targetAdVol);
                 } catch (Exception ignored) {
@@ -227,7 +227,7 @@ public class AdPlayer {
                             public void playing(MediaPlayer mediaPlayer) {
                                 started = true;
                                 if (adVolumeProvider != null) {
-                                    int targetAdVol = adVolumeProvider.get();
+                                    int targetAdVol = Math.max(0, Math.min(100, adVolumeProvider.get()));
                                     mediaPlayer.audio().setVolume(targetAdVol);
                                     AppLogger.log("[AdPlayer] Applied ad volume during playback: " + targetAdVol);
                                 }
@@ -248,7 +248,7 @@ public class AdPlayer {
                         AppLogger.log("[AdPlayer] VLC PLAY RESULT = " + result);
                         
                         if (adVolumeProvider != null) {
-                            int targetAdVol = adVolumeProvider.get();
+                            int targetAdVol = Math.max(0, Math.min(100, adVolumeProvider.get()));
                             vlcPlayer.audio().setVolume(targetAdVol);
                             AppLogger.log("[AdPlayer] Re-applying ad volume: " + targetAdVol);
                         }

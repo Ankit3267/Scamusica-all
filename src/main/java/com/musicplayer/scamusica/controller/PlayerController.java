@@ -28,6 +28,7 @@ import org.kordamp.ikonli.javafx.FontIcon;
 
 import uk.co.caprica.vlcj.player.base.MediaPlayer;
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter;
+import uk.co.caprica.vlcj.factory.MediaPlayerFactory;
 import uk.co.caprica.vlcj.player.component.AudioPlayerComponent;
 
 import javax.crypto.CipherInputStream;
@@ -85,6 +86,7 @@ public class PlayerController extends Application {
 
     private String currentPlaylistName;
 
+    public static final double DEFAULT_SAFE_VOLUME = 70.0;
     private static final String PREF_VOLUME = "player_volume";
     private static final String PREF_RESUME_PLAYLIST = "resume_playlist";
     private static final String PREF_RESUME_TRACK_ID = "resume_track_id";
@@ -145,7 +147,7 @@ public class PlayerController extends Application {
     
     private VolumeSettings currentVolumeSettings;
     private Integer currentScheduleId = null;
-    private int currentAdVolume = 100;
+    private int currentAdVolume = (int) DEFAULT_SAFE_VOLUME;
     private boolean isFirstVolumeApply = true;
 
     @Override
@@ -195,7 +197,12 @@ public class PlayerController extends Application {
         });
 
         try {
-            vlcPlayerComponent = new AudioPlayerComponent();
+            MediaPlayerFactory factory = new MediaPlayerFactory(
+                    "--no-video",
+                    "--audio-replay-gain-peak-protection",
+                    "--audio-replay-gain-mode=track"
+            );
+            vlcPlayerComponent = new AudioPlayerComponent(factory);
             vlcPlayer = vlcPlayerComponent.mediaPlayer();
             // Initialize AdSystem only AFTER vlcPlayer is fully ready
             startupDelayer.schedule(this::initializeAdSystem, 5, java.util.concurrent.TimeUnit.SECONDS);
@@ -509,17 +516,18 @@ public class PlayerController extends Application {
             Slider volumeSlider = controlsUtil.getVolumeSlider(bottomBar);
             controlsUtil.setupVolumeSliderFill(controlsUtil.getVolumeSlider(bottomBar));
 
-            double savedVolume = prefs.getDouble(PREF_VOLUME, 85.0);
+            double savedVolume = Math.max(0.0, Math.min(100.0, prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
             volumeSlider.setValue(savedVolume);
             vlcPlayer.audio().setVolume((int) savedVolume);
 
             volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+                int vol = Math.max(0, Math.min(100, newVal.intValue()));
                 if (adPlayer != null && adPlayer.isPlayingAd()) {
-                    vlcPlayer.audio().setVolume(newVal.intValue());
+                    vlcPlayer.audio().setVolume(vol);
                     return;
                 }
-                prefs.putDouble(PREF_VOLUME, newVal.doubleValue());
-                vlcPlayer.audio().setVolume(newVal.intValue());
+                prefs.putDouble(PREF_VOLUME, (double) vol);
+                vlcPlayer.audio().setVolume(vol);
             });
 
             progressSlider.setOnMouseReleased(e -> {
@@ -1217,7 +1225,7 @@ public class PlayerController extends Application {
                                             currentTempFile = tempFile;
                                         }
                                         Platform.runLater(() -> {
-                                            int originalVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
+                                            int originalVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
                                             long savedTime = adPlayer.getSavedSongTime();
                                             String startTimeOpt = ":start-time=" + (savedTime / 1000.0f);
 
@@ -1268,7 +1276,7 @@ public class PlayerController extends Application {
                                 });
                             } else if (NetworkMonitor.getInstance().isOnline()) {
                                 AppLogger.log("[AdPlayer] Resuming from URL: " + track.getUrl());
-                                int originalVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
+                                int originalVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
                                 long savedTime = adPlayer.getSavedSongTime();
                                 String startTimeOpt = ":start-time=" + (savedTime / 1000.0f);
 
@@ -1329,7 +1337,7 @@ public class PlayerController extends Application {
                                 }, 1500, TimeUnit.MILLISECONDS);
                             } else {
                                 AppLogger.log("[AdPlayer] Cannot resume — offline and no local file. Playing next.");
-                                int musicVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
+                                int musicVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
                                 AppLogger.log("[AdPlayer] Restoring music volume to: " + musicVol);
                                 if (vlcPlayer != null && vlcPlayer.audio() != null) {
                                     vlcPlayer.audio().setVolume(musicVol);
@@ -1341,7 +1349,7 @@ public class PlayerController extends Application {
                         } else {
                             AppLogger.log("[AdPlayer] No track to resume. Playing next.");
                             // Restore music volume before playing next track
-                            int musicVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
+                            int musicVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
                             AppLogger.log("[AdPlayer] Restoring music volume to: " + musicVol);
                             if (vlcPlayer != null && vlcPlayer.audio() != null) {
                                 vlcPlayer.audio().setVolume(musicVol);
@@ -2271,7 +2279,7 @@ public class PlayerController extends Application {
                     // ✅ Enforce correct music volume when a song starts playing
                     // (not during ad playback — the AdPlayer manages its own volume)
                     if (adPlayer == null || !adPlayer.isPlayingAd()) {
-                        int musicVol = (int) prefs.getDouble(PREF_VOLUME, 85.0);
+                        int musicVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
                         if (asyncExecutor != null) {
                             asyncExecutor.submit(() -> {
                                 try {
@@ -2775,16 +2783,20 @@ public class PlayerController extends Application {
             }
         });
 
-        int newMusicVolume = activeSchedule != null && activeSchedule.getMusicVolume() != null
+        int defaultVol = (int) DEFAULT_SAFE_VOLUME;
+        int rawMusicVol = activeSchedule != null && activeSchedule.getMusicVolume() != null
                 ? activeSchedule.getMusicVolume()
-                : (currentVolumeSettings.getMusicVolume() != null ? currentVolumeSettings.getMusicVolume() : 100);
-        int newAdVolume = activeSchedule != null && activeSchedule.getAdVolume() != null
+                : (currentVolumeSettings.getMusicVolume() != null ? currentVolumeSettings.getMusicVolume() : defaultVol);
+        int rawAdVol = activeSchedule != null && activeSchedule.getAdVolume() != null
                 ? activeSchedule.getAdVolume()
-                : (currentVolumeSettings.getAdVolume() != null ? currentVolumeSettings.getAdVolume() : 100);
-        
+                : (currentVolumeSettings.getAdVolume() != null ? currentVolumeSettings.getAdVolume() : defaultVol);
+
+        final int newMusicVolume = Math.max(0, Math.min(100, rawMusicVol));
+        final int newAdVolume = Math.max(0, Math.min(100, rawAdVol));
+
         currentAdVolume = newAdVolume;
 
-        int currentSetVol = (int) prefs.getDouble(PREF_VOLUME, 100.0);
+        int currentSetVol = (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME);
         // Also check actual VLC volume — after ad playback VLC may still be at ad volume
         // even though PREF_VOLUME is correct
         int actualVlcVol = -1;

@@ -4,46 +4,31 @@ import com.sun.jna.Pointer;
 import uk.co.caprica.vlcj.player.base.MediaPlayer;
 import uk.co.caprica.vlcj.player.base.callback.AudioCallbackAdapter;
 
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.DataLine;
-import javax.sound.sampled.SourceDataLine;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Handles raw PCM audio callback from LibVLC, calculates real-time peak volume
- * for Left and Right channels, scales audio data based on volume, and streams
- * audio output to JavaSound SourceDataLine.
+ * for Left and Right channels for the LedVuMeter visualization.
+ * 
+ * NOTE: Does NOT open or stream to a JavaSound SourceDataLine because LibVLC
+ * handles audio output natively directly to the OS audio system.
  */
 public class AudioCallbackHandler extends AudioCallbackAdapter {
-    private static final int SAMPLE_RATE = 44100;
-    private static final int CHANNELS = 2;
     private static final int BLOCK_SIZE = 4; // 2 channels * 2 bytes per sample (16-bit)
 
-    private SourceDataLine line;
-    private final AtomicInteger volumePercent = new AtomicInteger(85);
+    private final AtomicInteger volumePercent = new AtomicInteger(70);
 
     private volatile float leftPeak = 0.0f;
     private volatile float rightPeak = 0.0f;
     
     private byte[] buffer = new byte[16384]; // Pre-allocated buffer
 
-    public AudioCallbackHandler() throws Exception {
+    public AudioCallbackHandler() {
         super();
-        initLine();
-    }
-
-    private synchronized void initLine() throws Exception {
-        AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, CHANNELS, true, false);
-        DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
-        line = (SourceDataLine) AudioSystem.getLine(info);
-        // Open with a small buffer for low latency (~100ms)
-        line.open(format, SAMPLE_RATE * BLOCK_SIZE / 10);
-        line.start();
     }
 
     public void setVolume(int volume) {
-        this.volumePercent.set(volume);
+        this.volumePercent.set(Math.max(0, Math.min(100, volume)));
     }
 
     public float getLeftPeak() {
@@ -71,7 +56,7 @@ public class AudioCallbackHandler extends AudioCallbackAdapter {
         samples.read(0, buffer, 0, bytesCount);
         byte[] data = buffer;
 
-        // 1. Calculate Peak Amplitude (Pre-volume scaling) for visualization
+        // 1. Calculate Peak Amplitude for visualization
         float maxLeft = 0.0f;
         float maxRight = 0.0f;
 
@@ -92,67 +77,19 @@ public class AudioCallbackHandler extends AudioCallbackAdapter {
             }
         }
 
-        // Boost and clamp peaks slightly for nicer visualization dynamics
-        this.leftPeak = Math.max(this.leftPeak, Math.min(1.0f, maxLeft * 1.15f));
-        this.rightPeak = Math.max(this.rightPeak, Math.min(1.0f, maxRight * 1.15f));
-
-        // 2. Scale samples by the fader volume
-        double vol = volumePercent.get() / 100.0;
-        if (vol != 1.0) {
-            for (int i = 0; i < bytesCount; i += 2) {
-                short sample = (short) ((data[i] & 0xFF) | (data[i + 1] << 8));
-                sample = (short) (sample * vol);
-                data[i] = (byte) (sample & 0xFF);
-                data[i + 1] = (byte) ((sample >> 8) & 0xFF);
-            }
-        }
-
-        // 3. Write to SourceDataLine
-        synchronized (this) {
-            try {
-                if (line == null || !line.isOpen()) {
-                    initLine();
-                }
-                if (line != null) {
-                    if (!line.isActive()) {
-                        line.start();
-                    }
-                    line.write(data, 0, bytesCount);
-                }
-            } catch (Exception e) {
-                // If writing fails, try to reinitialize
-                try {
-                    initLine();
-                } catch (Exception ignored) {}
-            }
-        }
+        this.leftPeak = Math.max(this.leftPeak, Math.min(1.0f, maxLeft));
+        this.rightPeak = Math.max(this.rightPeak, Math.min(1.0f, maxRight));
     }
 
-    public synchronized void pauseLine() {
-        if (line != null && line.isRunning()) {
-            line.stop();
-        }
-    }
+    public synchronized void pauseLine() {}
 
-    public synchronized void resumeLine() {
-        if (line != null && !line.isRunning()) {
-            line.start();
-        }
-    }
+    public synchronized void resumeLine() {}
 
-    public synchronized void flushLine() {
-        if (line != null) {
-            line.flush();
-        }
-    }
+    public synchronized void flushLine() {}
 
     public synchronized void close() {
-        if (line != null) {
-            try {
-                line.stop();
-                line.close();
-            } catch (Exception ignored) {}
-            line = null;
-        }
+        leftPeak = 0.0f;
+        rightPeak = 0.0f;
     }
 }
+
