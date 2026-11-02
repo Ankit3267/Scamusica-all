@@ -1,0 +1,4 @@
+--patch-module
+com.musicplayer.scamusica=_
+--add-reads
+com.musicplayer.scamusica=ALL-UNNAMED

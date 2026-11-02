@@ -25,7 +25,8 @@ public class AdPlayer {
         void onPlaybackError(Exception ex);
     }
 
-    private final MediaPlayer vlcPlayer;
+    private volatile MediaPlayer vlcPlayer;
+    private volatile CrossfadeEngine crossfadeEngine;
     private final AdPlaybackListener listener;
     // private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -47,6 +48,23 @@ public class AdPlayer {
     public AdPlayer(MediaPlayer vlcPlayer, AdPlaybackListener listener) {
         this.vlcPlayer = vlcPlayer;
         this.listener = listener;
+    }
+
+    public AdPlayer(CrossfadeEngine crossfadeEngine, AdPlaybackListener listener) {
+        this.crossfadeEngine = crossfadeEngine;
+        this.vlcPlayer = crossfadeEngine != null ? crossfadeEngine.getActivePlayer() : null;
+        this.listener = listener;
+    }
+
+    public void setMediaPlayer(MediaPlayer vlcPlayer) {
+        this.vlcPlayer = vlcPlayer;
+    }
+
+    public void setCrossfadeEngine(CrossfadeEngine crossfadeEngine) {
+        this.crossfadeEngine = crossfadeEngine;
+        if (crossfadeEngine != null) {
+            this.vlcPlayer = crossfadeEngine.getActivePlayer();
+        }
     }
 
     public void setAdVolumeProvider(java.util.function.Supplier<Integer> adVolumeProvider) {
@@ -125,6 +143,10 @@ public class AdPlayer {
         AppLogger.log("[AdPlayer] Preparing ad: " + ad.getCampaignName());
 
         if (!songPausedForAds) {
+            if (crossfadeEngine != null) {
+                crossfadeEngine.cancelCrossfade();
+                vlcPlayer = crossfadeEngine.getActivePlayer();
+            }
             // Step 1: Save current song state
             final long[] timeRef = { 0L };
             final int[] volRef = { 70 };

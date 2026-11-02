@@ -6,6 +6,7 @@ import com.musicplayer.scamusica.model.PlaylistSequence;
 import com.musicplayer.scamusica.model.PlaylistTrack;
 import com.musicplayer.scamusica.model.VolumeSchedule;
 import com.musicplayer.scamusica.model.VolumeSettings;
+import com.musicplayer.scamusica.model.CrossfadeSettings;
 import com.musicplayer.scamusica.service.*;
 import com.musicplayer.scamusica.ui.*;
 
@@ -64,6 +65,8 @@ public class PlayerController extends Application {
 
     private volatile MediaPlayer vlcPlayer;
     private volatile AudioPlayerComponent vlcPlayerComponent;
+    private volatile CrossfadeEngine crossfadeEngine;
+    private volatile CrossfadeSettings currentCrossfadeSettings;
     private boolean vlcHandlersAttached = false;
     private boolean userPaused = false;
 
@@ -202,8 +205,10 @@ public class PlayerController extends Application {
                     "--audio-replay-gain-peak-protection",
                     "--audio-replay-gain-mode=track"
             );
-            vlcPlayerComponent = new AudioPlayerComponent(factory);
-            vlcPlayer = vlcPlayerComponent.mediaPlayer();
+            crossfadeEngine = new CrossfadeEngine(factory);
+            vlcPlayer = crossfadeEngine.getActivePlayer();
+            vlcPlayerComponent = crossfadeEngine.getActiveComponent();
+            setupCrossfadeListener();
             // Initialize AdSystem only AFTER vlcPlayer is fully ready
             startupDelayer.schedule(this::initializeAdSystem, 5, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Throwable t) {
@@ -306,6 +311,22 @@ public class PlayerController extends Application {
                 currentVolumeSettings = playlistApiService.fetchVolumeSettings();
             } catch (Exception e) {
                 AppLogger.log("[PlayerController] Failed to fetch volume settings on startup: " + e.getMessage());
+            }
+
+            try {
+                currentCrossfadeSettings = playlistApiService.fetchCrossfadeSettings();
+                if (currentCrossfadeSettings != null && crossfadeEngine != null) {
+                    crossfadeEngine.setCrossfadeEnabled(currentCrossfadeSettings.isCrossfadeEnabled());
+                    crossfadeEngine.setCrossfadeDuration(currentCrossfadeSettings.getCrossfadeDuration());
+                    AppLogger.log("[PlayerController] Initialized crossfade settings: enabled="
+                            + currentCrossfadeSettings.isCrossfadeEnabled()
+                            + ", duration=" + currentCrossfadeSettings.getCrossfadeDuration() + "s");
+                } else if (crossfadeEngine != null) {
+                    crossfadeEngine.setCrossfadeEnabled(false);
+                    crossfadeEngine.setCrossfadeDuration(CrossfadeSettings.DEFAULT_DURATION);
+                }
+            } catch (Exception e) {
+                AppLogger.log("[PlayerController] Failed to fetch crossfade settings on startup: " + e.getMessage());
             }
 
             List<String> apiPlaylists = playlistApiService.fetchPlaylistTitles();
@@ -519,6 +540,9 @@ public class PlayerController extends Application {
             double savedVolume = Math.max(0.0, Math.min(100.0, prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
             volumeSlider.setValue(savedVolume);
             vlcPlayer.audio().setVolume((int) savedVolume);
+            if (crossfadeEngine != null) {
+                crossfadeEngine.setTargetVolume((int) savedVolume);
+            }
 
             volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
                 int vol = Math.max(0, Math.min(100, newVal.intValue()));
@@ -527,7 +551,11 @@ public class PlayerController extends Application {
                     return;
                 }
                 prefs.putDouble(PREF_VOLUME, (double) vol);
-                vlcPlayer.audio().setVolume(vol);
+                if (crossfadeEngine != null) {
+                    crossfadeEngine.setTargetVolume(vol);
+                } else {
+                    vlcPlayer.audio().setVolume(vol);
+                }
             });
 
             progressSlider.setOnMouseReleased(e -> {
@@ -576,6 +604,9 @@ public class PlayerController extends Application {
                 final Button finalForwardBtn = forwardBtn;
                 javafx.event.EventHandler<javafx.scene.input.MouseEvent> fwdHandler = e -> {
                     e.consume();
+                    if (crossfadeEngine != null) {
+                        crossfadeEngine.cancelCrossfade();
+                    }
                     finalForwardBtn.getStyleClass().add("control-active");
                     Platform.runLater(() -> finalForwardBtn.getStyleClass().remove("control-active"));
 
@@ -695,6 +726,22 @@ public class PlayerController extends Application {
             }
         } catch (Exception e) {
             AppLogger.log("[SYNC] Failed to sync volume settings: " + e.getMessage());
+        }
+
+        try {
+            CrossfadeSettings newCrossfadeSettings = apiService.fetchCrossfadeSettings();
+            if (newCrossfadeSettings != null) {
+                currentCrossfadeSettings = newCrossfadeSettings;
+                if (crossfadeEngine != null) {
+                    crossfadeEngine.setCrossfadeEnabled(newCrossfadeSettings.isCrossfadeEnabled());
+                    crossfadeEngine.setCrossfadeDuration(newCrossfadeSettings.getCrossfadeDuration());
+                }
+                AppLogger.log("[SYNC] Crossfade settings updated: enabled="
+                        + newCrossfadeSettings.isCrossfadeEnabled()
+                        + ", duration=" + newCrossfadeSettings.getCrossfadeDuration() + "s");
+            }
+        } catch (Exception e) {
+            AppLogger.log("[SYNC] Failed to sync crossfade settings: " + e.getMessage());
         }
 
         try {
@@ -1376,6 +1423,9 @@ public class PlayerController extends Application {
             }
         });
 
+        if (crossfadeEngine != null) {
+            adPlayer.setCrossfadeEngine(crossfadeEngine);
+        }
         adPlayer.setAdVolumeProvider(this::getCurrentAdVolume);
 
         // 2. Fetch ads from server
@@ -2058,6 +2108,10 @@ public class PlayerController extends Application {
 
         titleLabel.setText(track.getTitle());
 
+        if (crossfadeEngine != null) {
+            crossfadeEngine.cancelCrossfade();
+        }
+
         if (vlcPlayer != null && vlcPlayer.status().isPlaying()) {
             try {
                 vlcPlayer.controls().pause();
@@ -2144,6 +2198,10 @@ public class PlayerController extends Application {
                             } else {
                                 vlcPlayer.media().play(tempFile.getAbsolutePath());
                             }
+                            if (crossfadeEngine != null) {
+                                crossfadeEngine.setActiveTempFile(tempFile);
+                            }
+                            prepareNextTrackForCrossfade();
                             if (!vlcHandlersAttached) {
 
                                 attachVlcHandlers(
@@ -2228,6 +2286,10 @@ public class PlayerController extends Application {
         } else {
             vlcPlayer.media().play(safeUrl);
         }
+        if (crossfadeEngine != null) {
+            crossfadeEngine.setActiveTempFile(null);
+        }
+        prepareNextTrackForCrossfade();
 
         if (!vlcHandlersAttached) {
 
@@ -2277,7 +2339,10 @@ public class PlayerController extends Application {
                         ledVuMeter.start();
                     }
                     // ✅ Enforce correct music volume when a song starts playing
-                    // (not during ad playback — the AdPlayer manages its own volume)
+                    // (not during ad playback or active crossfade)
+                    if (crossfadeEngine != null && crossfadeEngine.isCrossfading()) {
+                        return;
+                    }
                     if (adPlayer == null || !adPlayer.isPlayingAd()) {
                         int musicVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
                         if (asyncExecutor != null) {
@@ -2299,6 +2364,9 @@ public class PlayerController extends Application {
 
             @Override
             public void paused(MediaPlayer mediaPlayer) {
+                if (crossfadeEngine != null && mediaPlayer != crossfadeEngine.getActivePlayer()) {
+                    return;
+                }
                 Platform.runLater(() -> {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {
@@ -2313,6 +2381,9 @@ public class PlayerController extends Application {
 
             @Override
             public void stopped(MediaPlayer mediaPlayer) {
+                if (crossfadeEngine != null && mediaPlayer != crossfadeEngine.getActivePlayer()) {
+                    return;
+                }
                 if (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds())) {
                     return;
                 }
@@ -2330,6 +2401,9 @@ public class PlayerController extends Application {
 
             @Override
             public void timeChanged(MediaPlayer mediaPlayer, long newTime) {
+                if (crossfadeEngine != null && mediaPlayer != crossfadeEngine.getActivePlayer()) {
+                    return;
+                }
                 long now = System.currentTimeMillis();
                 if (now - lastTimeChangedMillis < 250)
                     return; // Throttle to 250ms
@@ -2362,6 +2436,11 @@ public class PlayerController extends Application {
                         }
                     }
                 });
+
+                if (crossfadeEngine != null) {
+                    long duration = mediaPlayer.status().length();
+                    crossfadeEngine.checkAndTriggerCrossfade(newTime, duration);
+                }
             }
 
             @Override
@@ -2370,6 +2449,17 @@ public class PlayerController extends Application {
                 if (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds())) {
                     AppLogger.log("[PLAYER] Media finished but ad is active, ignoring");
                     return;
+                }
+
+                if (crossfadeEngine != null) {
+                    if (crossfadeEngine.isCrossfading()) {
+                        AppLogger.log("[PLAYER] Song finished during active crossfade, ignoring finished event");
+                        return;
+                    }
+                    if (mediaPlayer != crossfadeEngine.getActivePlayer()) {
+                        AppLogger.log("[PLAYER] Non-active player finished, ignoring");
+                        return;
+                    }
                 }
 
                 Platform.runLater(() -> {
@@ -2396,6 +2486,9 @@ public class PlayerController extends Application {
 
             @Override
             public void error(MediaPlayer mediaPlayer) {
+                if (crossfadeEngine != null && mediaPlayer != crossfadeEngine.getActivePlayer()) {
+                    return;
+                }
                 if (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds())) {
                     return;
                 }
@@ -2417,7 +2510,12 @@ public class PlayerController extends Application {
                 }, 2000, java.util.concurrent.TimeUnit.MILLISECONDS);
             }
         };
-        vlcPlayer.events().addMediaPlayerEventListener(currentVlcListener);
+        if (crossfadeEngine != null) {
+            crossfadeEngine.getActivePlayer().events().addMediaPlayerEventListener(currentVlcListener);
+            crossfadeEngine.getStandbyPlayer().events().addMediaPlayerEventListener(currentVlcListener);
+        } else {
+            vlcPlayer.events().addMediaPlayerEventListener(currentVlcListener);
+        }
     }
 
     private void playNextTrack(Label albumHeading,
@@ -2429,6 +2527,9 @@ public class PlayerController extends Application {
             HBox bottomBar,
             Label downloadLabel) throws URISyntaxException {
 
+        if (crossfadeEngine != null) {
+            crossfadeEngine.cancelCrossfade();
+        }
         currentTrackIndex++;
         AppLogger.log("[PLAYER] Next track index: " + currentTrackIndex);
         synchronized (playQueue) {
@@ -2508,6 +2609,9 @@ public class PlayerController extends Application {
             }
 
             if (vlcPlayer.status().isPlaying()) {
+                if (crossfadeEngine != null) {
+                    crossfadeEngine.cancelCrossfade();
+                }
                 vlcPlayer.controls().pause();
                 userPaused = true;
                 bigIcon.setIconLiteral("fas-play");
@@ -2552,6 +2656,9 @@ public class PlayerController extends Application {
         // false
         // to prevent JNA native callback memory leaks
 
+        if (crossfadeEngine != null) {
+            crossfadeEngine.cancelCrossfade();
+        }
         cleanupTempFile();
 
         if (vlcPlayer != null) {
@@ -2663,6 +2770,9 @@ public class PlayerController extends Application {
 
     private void cleanupTempFile() {
         synchronized (this) {
+            if (crossfadeEngine != null && crossfadeEngine.isCrossfading()) {
+                return;
+            }
             if (currentTempFile != null) {
                 try {
                     if (currentTempFile.exists()) {
@@ -2819,7 +2929,9 @@ public class PlayerController extends Application {
             Platform.runLater(() -> {
                 try {
                     prefs.putDouble(PREF_VOLUME, newMusicVolume);
-                    if (vlcPlayer != null && vlcPlayer.audio() != null) {
+                    if (crossfadeEngine != null) {
+                        crossfadeEngine.setTargetVolume(newMusicVolume);
+                    } else if (vlcPlayer != null && vlcPlayer.audio() != null) {
                         vlcPlayer.audio().setVolume(newMusicVolume);
                     }
                     if (globalBottomBar != null && controlsUtil != null) {
@@ -2888,7 +3000,12 @@ public class PlayerController extends Application {
             schedular.shutdownNow();
         }
 
-        if (vlcPlayer != null) {
+        if (crossfadeEngine != null) {
+            try {
+                crossfadeEngine.release();
+            } catch (Exception ignored) {
+            }
+        } else if (vlcPlayer != null) {
             try {
                 vlcPlayer.controls().stop();
             } catch (Exception ignored) {
@@ -2930,5 +3047,148 @@ public class PlayerController extends Application {
         if (audioCallbackHandler != null) {
             audioCallbackHandler.close();
         }
+    }
+
+    private void setupCrossfadeListener() {
+        if (crossfadeEngine == null) return;
+        crossfadeEngine.setListener(new CrossfadeEngine.CrossfadeListener() {
+            @Override
+            public void onCrossfadeStarted(PlaylistTrack incomingTrack, File incomingTempFile) {
+                AppLogger.log("[CROSSFADE] Transition started into: " + (incomingTrack != null ? incomingTrack.getTitle() : ""));
+                try {
+                    synchronized (playQueue) {
+                        if (!playQueue.isEmpty()) {
+                            currentTrackIndex = (currentTrackIndex + 1) % playQueue.size();
+                        }
+                    }
+
+                    if (incomingTrack != null) {
+                        PlaybackHistoryLogger.logSong(incomingTrack);
+
+                        String folderTitle = incomingTrack.getFolderTitle();
+                        if (folderTitle != null && !folderTitle.trim().isEmpty()) {
+                            globalAlbumHeading.textProperty().unbind();
+                            globalAlbumHeading.setText(folderTitle);
+                        } else {
+                            globalAlbumHeading.textProperty().bind(LanguageManager.createStringBinding("label.unknownFolder"));
+                        }
+
+                        globalTitleLabel.setText(incomingTrack.getTitle());
+
+                        if (albumImageView != null) {
+                            String albumImgUrl = incomingTrack.getAlbumImageUrl();
+                            if (albumImgUrl != null && !albumImgUrl.trim().isEmpty()) {
+                                if (!albumImgUrl.equals(currentAlbumImgUrl)) {
+                                    currentAlbumImgUrl = albumImgUrl;
+                                    albumImageView.setImage(defaultAlbumImage);
+                                    asyncExecutor.submit(() -> {
+                                        try {
+                                            Image image = com.musicplayer.scamusica.util.ImageCache.getImage(albumImgUrl);
+                                            Platform.runLater(() -> {
+                                                if (image != null) {
+                                                    albumImageView.setImage(image);
+                                                }
+                                            });
+                                        } catch (Exception ex) {
+                                            ex.printStackTrace();
+                                        }
+                                    });
+                                }
+                            } else {
+                                currentAlbumImgUrl = null;
+                                albumImageView.setImage(defaultAlbumImage);
+                            }
+                        }
+
+                        if (globalProgressSlider != null) {
+                            globalProgressSlider.setValue(0);
+                        }
+                    }
+                } catch (Exception ex) {
+                    AppLogger.log("[CROSSFADE] Error updating UI on crossfade start: " + ex.getMessage());
+                }
+            }
+
+            @Override
+            public void onCrossfadeCompleted(MediaPlayer newActivePlayer, PlaylistTrack currentTrack, File outgoingTempFile) {
+                AppLogger.log("[CROSSFADE] Transition completed into active player: " + (currentTrack != null ? currentTrack.getTitle() : ""));
+                vlcPlayer = newActivePlayer;
+                vlcPlayerComponent = crossfadeEngine.getActiveComponent();
+                if (adPlayer != null) {
+                    adPlayer.setMediaPlayer(vlcPlayer);
+                }
+
+                if (outgoingTempFile != null && outgoingTempFile.exists()) {
+                    try {
+                        outgoingTempFile.delete();
+                        AppLogger.log("[CROSSFADE] Deleted outgoing temp file: " + outgoingTempFile.getName());
+                    } catch (Exception e) {
+                        AppLogger.log("[CROSSFADE] Failed to delete outgoing temp file: " + e.getMessage());
+                    }
+                }
+
+                prepareNextTrackForCrossfade();
+            }
+
+            @Override
+            public void onCrossfadeFailed(Exception e) {
+                AppLogger.log("[CROSSFADE] Transition failed: " + e.getMessage());
+            }
+        });
+    }
+
+    private void prepareNextTrackForCrossfade() {
+        if (crossfadeEngine == null || !crossfadeEngine.isCrossfadeEnabled()) {
+            return;
+        }
+
+        asyncExecutor.submit(() -> {
+            try {
+                PlaylistTrack nextTrack = null;
+                synchronized (playQueue) {
+                    if (playQueue.isEmpty()) {
+                        return;
+                    }
+                    int nextIndex = currentTrackIndex + 1;
+                    if (nextIndex >= playQueue.size()) {
+                        nextIndex = 0;
+                    }
+                    nextTrack = playQueue.get(nextIndex);
+                }
+
+                if (nextTrack == null) {
+                    return;
+                }
+
+                File encryptedFile = new File(SONGS_DIR, "song-" + nextTrack.getId() + ".dat");
+                String mediaPath = null;
+                File tempFile = null;
+
+                if (encryptedFile.exists() && encryptedFile.length() > 10_000) {
+                    try {
+                        tempFile = decryptToTemp(encryptedFile);
+                        mediaPath = tempFile.getAbsolutePath();
+                    } catch (Exception ex) {
+                        AppLogger.log("[CROSSFADE] Failed to decrypt next track: " + ex.getMessage());
+                    }
+                }
+
+                if (mediaPath == null) {
+                    if (nextTrack.getUrl() != null && !nextTrack.getUrl().trim().isEmpty()) {
+                        String safeUrl = encodeMediaUrl(nextTrack.getUrl());
+                        if (!safeUrl.contains(".mp3")) {
+                            safeUrl += "?ext=.mp3";
+                        }
+                        mediaPath = safeUrl;
+                    }
+                }
+
+                if (mediaPath != null) {
+                    crossfadeEngine.prepareNextTrack(nextTrack, mediaPath, tempFile);
+                }
+            } catch (Exception e) {
+                AppLogger.log("[CROSSFADE] Error preparing next track: " + e.getMessage());
+            }
+        });
     }
 }

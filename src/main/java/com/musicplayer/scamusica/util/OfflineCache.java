@@ -5,6 +5,7 @@ import com.musicplayer.scamusica.model.Ad;
 import com.musicplayer.scamusica.model.PlaylistSequence;
 import com.musicplayer.scamusica.model.PlaylistTrack;
 import com.musicplayer.scamusica.model.VolumeSettings;
+import com.musicplayer.scamusica.model.CrossfadeSettings;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -311,6 +312,39 @@ public class OfflineCache {
             return settings;
         } catch (Exception e) {
             AppLogger.log("[OfflineCache] Failed to load volume settings: " + e.getMessage());
+            return null;
+        }
+    }
+
+    public static void saveCrossfadeSettings(CrossfadeSettings settings) {
+        try {
+            File file = new File(getCacheDir(), "crossfade_settings.json");
+            String json = GSON.toJson(settings);
+            try (FileWriter fw = new FileWriter(file)) {
+                fw.write(json);
+            }
+            AppLogger.log("[OfflineCache] Crossfade settings saved");
+        } catch (Exception e) {
+            AppLogger.log("[OfflineCache] Failed to save crossfade settings: " + e.getMessage());
+        }
+    }
+
+    public static CrossfadeSettings loadCrossfadeSettings() {
+        try {
+            File file = new File(getCacheDir(), "crossfade_settings.json");
+            if (!file.exists()) return null;
+
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+            }
+
+            CrossfadeSettings settings = GSON.fromJson(sb.toString(), CrossfadeSettings.class);
+            AppLogger.log("[OfflineCache] Crossfade settings loaded");
+            return settings;
+        } catch (Exception e) {
+            AppLogger.log("[OfflineCache] Failed to load crossfade settings: " + e.getMessage());
             return null;
         }
     }

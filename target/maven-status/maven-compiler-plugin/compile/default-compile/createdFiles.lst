@@ -1,4 +1,5 @@
 com/musicplayer/scamusica/service/InternetChecker.class
+com/musicplayer/scamusica/service/CrossfadeEngine.class
 com/musicplayer/scamusica/util/AppLogger.class
 com/musicplayer/scamusica/util/CryptoUtil.class
 com/musicplayer/scamusica/model/PlaylistTrack.class
@@ -6,6 +7,7 @@ com/musicplayer/scamusica/util/AppConfig.class
 com/musicplayer/scamusica/controller/PlayerController$3.class
 com/musicplayer/scamusica/model/VolumeSettings.class
 com/musicplayer/scamusica/service/NetworkMonitor.class
+com/musicplayer/scamusica/model/CrossfadeSettings.class
 com/musicplayer/scamusica/service/AdPlayer$1.class
 com/musicplayer/scamusica/manager/SessionManager.class
 com/musicplayer/scamusica/service/InternetState.class
@@ -41,6 +43,7 @@ com/musicplayer/scamusica/service/PlaylistApiService$1StyleQueue.class
 com/musicplayer/scamusica/ui/LedVuMeter.class
 com/musicplayer/scamusica/util/OfflineCache$1.class
 com/musicplayer/scamusica/controller/CodeVerificationController.class
+com/musicplayer/scamusica/service/CrossfadeEngine$CrossfadeListener.class
 com/musicplayer/scamusica/controller/PlayerController$2.class
 com/musicplayer/scamusica/service/ConnectivityMonitor.class
 com/musicplayer/scamusica/service/LogSyncService.class

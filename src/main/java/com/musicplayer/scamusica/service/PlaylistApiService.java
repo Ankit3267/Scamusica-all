@@ -7,6 +7,7 @@ import com.musicplayer.scamusica.model.PlaylistSequence;
 import com.musicplayer.scamusica.model.PlaylistTrack;
 import com.musicplayer.scamusica.model.VolumeSchedule;
 import com.musicplayer.scamusica.model.VolumeSettings;
+import com.musicplayer.scamusica.model.CrossfadeSettings;
 import com.musicplayer.scamusica.util.ApiClient;
 import com.musicplayer.scamusica.util.AppLogger;
 import com.musicplayer.scamusica.util.OfflineCache;
@@ -657,6 +658,41 @@ public class PlaylistApiService {
             return null;
         }
     }
+
+    public CrossfadeSettings fetchCrossfadeSettings() throws Exception {
+        try {
+            JsonObject root = fetchRootJson();
+            if (!root.has("data") || !root.get("data").isJsonObject()) {
+                return null;
+            }
+
+            JsonObject dataObj = root.getAsJsonObject("data");
+            if (!dataObj.has("crossfade") || !dataObj.get("crossfade").isJsonObject()) {
+                CrossfadeSettings cached = OfflineCache.loadCrossfadeSettings();
+                return cached;
+            }
+
+            Gson gson = new Gson();
+            CrossfadeSettings crossfadeSettings = gson.fromJson(dataObj.get("crossfade"), CrossfadeSettings.class);
+            AppLogger.log("[PlaylistApiService] Fetched crossfade settings from API: " + crossfadeSettings);
+
+            if (crossfadeSettings != null) {
+                OfflineCache.saveCrossfadeSettings(crossfadeSettings);
+            }
+
+            return crossfadeSettings;
+
+        } catch (Exception e) {
+            AppLogger.log("[PlaylistApiService] fetchCrossfadeSettings failed: " + e.getMessage());
+            CrossfadeSettings cached = OfflineCache.loadCrossfadeSettings();
+            if (cached != null) {
+                AppLogger.log("[PlaylistApiService] Using cached crossfade settings: " + cached);
+                return cached;
+            }
+            return null;
+        }
+    }
+
     public Set<Integer> fetchDefaultSequenceSongIds() {
         Set<Integer> allIds = new HashSet<>();
         try {
