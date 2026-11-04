@@ -3,6 +3,7 @@ com/musicplayer/scamusica/service/CrossfadeEngine.class
 com/musicplayer/scamusica/util/AppLogger.class
 com/musicplayer/scamusica/util/CryptoUtil.class
 com/musicplayer/scamusica/model/PlaylistTrack.class
+com/musicplayer/scamusica/controller/PlayerController$6.class
 com/musicplayer/scamusica/util/AppConfig.class
 com/musicplayer/scamusica/controller/PlayerController$3.class
 com/musicplayer/scamusica/model/VolumeSettings.class

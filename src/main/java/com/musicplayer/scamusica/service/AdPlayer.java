@@ -1,5 +1,6 @@
 package com.musicplayer.scamusica.service;
 
+import com.musicplayer.scamusica.controller.PlayerController;
 import com.musicplayer.scamusica.model.Ad;
 import com.musicplayer.scamusica.util.AppLogger;
 import com.musicplayer.scamusica.util.Utility;
@@ -144,7 +145,7 @@ public class AdPlayer {
 
         if (!songPausedForAds) {
             if (crossfadeEngine != null) {
-                crossfadeEngine.cancelCrossfade();
+                crossfadeEngine.cancelCrossfade(true);
                 vlcPlayer = crossfadeEngine.getActivePlayer();
             }
             // Step 1: Save current song state
@@ -197,8 +198,9 @@ public class AdPlayer {
                     listener.onSongPaused("Ad starting");
                     
                     int targetAdVol = (adVolumeProvider != null) ? Math.max(0, Math.min(100, adVolumeProvider.get())) : originalVol;
-                    AppLogger.log("[AdPlayer] Setting ad volume to: " + targetAdVol);
-                    vlcPlayer.audio().setVolume(targetAdVol);
+                    int safeAdVol = PlayerController.toSafeVlcVolume(targetAdVol);
+                    AppLogger.log("[AdPlayer] Setting ad volume to: " + safeAdVol + " (UI: " + targetAdVol + ")");
+                    vlcPlayer.audio().setVolume(safeAdVol);
                 } catch (Exception ignored) {
                 }
             });
@@ -209,6 +211,9 @@ public class AdPlayer {
         // Step 3: Loop over ad audios
         if (ad.getAdAudios() != null && !ad.getAdAudios().isEmpty()) {
             for (com.musicplayer.scamusica.model.AdAudio adAudio : ad.getAdAudios()) {
+                if (crossfadeEngine != null && crossfadeEngine.isCrossfading()) {
+                    crossfadeEngine.cancelCrossfade(true);
+                }
                 String adUrl = buildAdUrl(adAudio);
                 if (adUrl == null) {
                     AppLogger.log("[AdPlayer] Invalid ad audio URL, skipping");
@@ -250,8 +255,9 @@ public class AdPlayer {
                                 started = true;
                                 if (adVolumeProvider != null) {
                                     int targetAdVol = Math.max(0, Math.min(100, adVolumeProvider.get()));
-                                    mediaPlayer.audio().setVolume(targetAdVol);
-                                    AppLogger.log("[AdPlayer] Applied ad volume during playback: " + targetAdVol);
+                                    int safeAdVol = PlayerController.toSafeVlcVolume(targetAdVol);
+                                    mediaPlayer.audio().setVolume(safeAdVol);
+                                    AppLogger.log("[AdPlayer] Applied ad volume during playback: " + safeAdVol + " (UI: " + targetAdVol + ")");
                                 }
                             }
 
@@ -271,8 +277,9 @@ public class AdPlayer {
                         
                         if (adVolumeProvider != null) {
                             int targetAdVol = Math.max(0, Math.min(100, adVolumeProvider.get()));
-                            vlcPlayer.audio().setVolume(targetAdVol);
-                            AppLogger.log("[AdPlayer] Re-applying ad volume: " + targetAdVol);
+                            int safeAdVol = PlayerController.toSafeVlcVolume(targetAdVol);
+                            vlcPlayer.audio().setVolume(safeAdVol);
+                            AppLogger.log("[AdPlayer] Re-applying ad volume: " + safeAdVol + " (UI: " + targetAdVol + ")");
                         }
 
                     } catch (Exception e) {

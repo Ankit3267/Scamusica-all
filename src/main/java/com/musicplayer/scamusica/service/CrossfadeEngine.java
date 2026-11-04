@@ -56,7 +56,7 @@ public class CrossfadeEngine {
     private volatile boolean crossfadeEnabled = false;
     private volatile int crossfadeDurationSec = CrossfadeSettings.DEFAULT_DURATION;
     private volatile int crossfadeDurationMs = CrossfadeSettings.DEFAULT_DURATION * 1000;
-    private volatile int targetVolume = 85;
+    private volatile int targetVolume = (int) com.musicplayer.scamusica.controller.PlayerController.DEFAULT_SAFE_VOLUME;
 
     // Crossfade runtime state
     private volatile boolean isCrossfading = false;
@@ -150,7 +150,7 @@ public class CrossfadeEngine {
         this.targetVolume = Math.max(0, Math.min(100, volume));
         if (!isCrossfading && activePlayer != null) {
             try {
-                activePlayer.audio().setVolume(this.targetVolume);
+                activePlayer.audio().setVolume(com.musicplayer.scamusica.controller.PlayerController.toSafeVlcVolume(this.targetVolume));
             } catch (Exception ignored) {}
         }
     }
@@ -313,9 +313,15 @@ public class CrossfadeEngine {
                     }
 
                     float progress = (float) step / (float) totalSteps;
-                    int baseVol = targetVolume;
-                    int outVol = Math.round(baseVol * (1.0f - progress));
-                    int inVol = Math.round(baseVol * progress);
+                    int baseVol = com.musicplayer.scamusica.controller.PlayerController.toSafeVlcVolume(targetVolume);
+
+                    // Equal-power crossfade curve: cos(progress * PI/2) and sin(progress * PI/2)
+                    // Prevents acoustic energy summing above 0 dBFS during dual-player overlap
+                    double outFactor = Math.cos(progress * (Math.PI / 2.0));
+                    double inFactor = Math.sin(progress * (Math.PI / 2.0));
+
+                    int outVol = (int) Math.round(baseVol * outFactor);
+                    int inVol = (int) Math.round(baseVol * inFactor);
 
                     outVol = Math.max(0, Math.min(baseVol, outVol));
                     inVol = Math.max(0, Math.min(baseVol, inVol));
@@ -350,7 +356,7 @@ public class CrossfadeEngine {
         try {
             // Set final volume state
             outgoingPlayer.audio().setVolume(0);
-            incomingPlayer.audio().setVolume(targetVolume);
+            incomingPlayer.audio().setVolume(com.musicplayer.scamusica.controller.PlayerController.toSafeVlcVolume(targetVolume));
 
             // Stop outgoing player
             outgoingPlayer.controls().stop();
@@ -391,6 +397,13 @@ public class CrossfadeEngine {
      * Stops the standby player and restores activePlayer volume to targetVolume.
      */
     public synchronized void cancelCrossfade() {
+        cancelCrossfade(false);
+    }
+
+    /**
+     * Cancels any active crossfade with option to clear prepared track.
+     */
+    public synchronized void cancelCrossfade(boolean clearPrepared) {
         if (fadeTask != null) {
             fadeTask.cancel(true);
             fadeTask = null;
@@ -409,19 +422,21 @@ public class CrossfadeEngine {
 
             try {
                 if (activePlayer != null) {
-                    activePlayer.audio().setVolume(targetVolume);
+                    activePlayer.audio().setVolume(com.musicplayer.scamusica.controller.PlayerController.toSafeVlcVolume(targetVolume));
                 }
             } catch (Exception ignored) {}
         }
 
-        clearPreparedTrack(true);
+        if (clearPrepared) {
+            clearPreparedTrack(true);
+        }
     }
 
     /**
      * Stops both players and cancels any running crossfade.
      */
     public synchronized void stop() {
-        cancelCrossfade();
+        cancelCrossfade(true);
         try {
             if (activePlayer != null) activePlayer.controls().stop();
             if (standbyPlayer != null) standbyPlayer.controls().stop();

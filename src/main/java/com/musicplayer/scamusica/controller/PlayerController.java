@@ -69,6 +69,7 @@ public class PlayerController extends Application {
     private volatile CrossfadeSettings currentCrossfadeSettings;
     private boolean vlcHandlersAttached = false;
     private boolean userPaused = false;
+    private volatile boolean isResumingSongFromAd = false;
 
     private MediaPlayerEventAdapter currentVlcListener = null;
     private File currentTempFile = null;
@@ -90,6 +91,18 @@ public class PlayerController extends Application {
     private String currentPlaylistName;
 
     public static final double DEFAULT_SAFE_VOLUME = 70.0;
+    public static final double MAX_HEADROOM_FACTOR = 0.85;
+
+    /**
+     * Scales a 0-100 UI/admin volume percentage to a safe LibVLC output volume
+     * with professional digital headroom (0.85 multiplier ≈ -2.5 dBFS),
+     * preventing DAC inter-sample clipping and mixer preamp saturation.
+     */
+    public static int toSafeVlcVolume(int uiPercent) {
+        int clamped = Math.max(0, Math.min(100, uiPercent));
+        return (int) Math.round(clamped * MAX_HEADROOM_FACTOR);
+    }
+
     private static final String PREF_VOLUME = "player_volume";
     private static final String PREF_RESUME_PLAYLIST = "resume_playlist";
     private static final String PREF_RESUME_TRACK_ID = "resume_track_id";
@@ -202,8 +215,20 @@ public class PlayerController extends Application {
         try {
             MediaPlayerFactory factory = new MediaPlayerFactory(
                     "--no-video",
+                    // ReplayGain with safe fallback for un-tagged tracks
+                    "--audio-replay-gain-mode=track",
                     "--audio-replay-gain-peak-protection",
-                    "--audio-replay-gain-mode=track"
+                    "--audio-replay-gain-preamp=-2.0",
+                    "--audio-replay-gain-default=-2.5",
+                    // Broadcast-grade peak limiter filter to prevent digital/mixer clipping
+                    "--audio-filter=compressor",
+                    "--compressor-rms-peak=0.0",
+                    "--compressor-attack=1.5",
+                    "--compressor-release=60.0",
+                    "--compressor-threshold=-2.5",
+                    "--compressor-ratio=12.0",
+                    "--compressor-knee=1.5",
+                    "--compressor-makeup-gain=0.0"
             );
             crossfadeEngine = new CrossfadeEngine(factory);
             vlcPlayer = crossfadeEngine.getActivePlayer();
@@ -539,7 +564,7 @@ public class PlayerController extends Application {
 
             double savedVolume = Math.max(0.0, Math.min(100.0, prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
             volumeSlider.setValue(savedVolume);
-            vlcPlayer.audio().setVolume((int) savedVolume);
+            vlcPlayer.audio().setVolume(toSafeVlcVolume((int) savedVolume));
             if (crossfadeEngine != null) {
                 crossfadeEngine.setTargetVolume((int) savedVolume);
             }
@@ -547,14 +572,14 @@ public class PlayerController extends Application {
             volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
                 int vol = Math.max(0, Math.min(100, newVal.intValue()));
                 if (adPlayer != null && adPlayer.isPlayingAd()) {
-                    vlcPlayer.audio().setVolume(vol);
+                    vlcPlayer.audio().setVolume(toSafeVlcVolume(vol));
                     return;
                 }
                 prefs.putDouble(PREF_VOLUME, (double) vol);
                 if (crossfadeEngine != null) {
                     crossfadeEngine.setTargetVolume(vol);
                 } else {
-                    vlcPlayer.audio().setVolume(vol);
+                    vlcPlayer.audio().setVolume(toSafeVlcVolume(vol));
                 }
             });
 
@@ -1018,7 +1043,7 @@ public class PlayerController extends Application {
                 if (playingTrack != null) {
                     int newIndex = -1;
                     for (int i = 0; i < playQueue.size(); i++) {
-                        if (playQueue.get(i).getId() == playingTrack.getId()) {
+                        if (Objects.equals(playQueue.get(i).getId(), playingTrack.getId())) {
                             newIndex = i;
                             break;
                         }
@@ -1042,7 +1067,7 @@ public class PlayerController extends Application {
 
                 deleteSongFile(id);
 
-                if (playingTrack != null && playingTrack.getId() == id) {
+                if (playingTrack != null && Objects.equals(playingTrack.getId(), id)) {
                     Platform.runLater(() -> {
                         try {
                             playNextTrack(null, null, null, null, null, null, null, null);
@@ -1188,7 +1213,8 @@ public class PlayerController extends Application {
                         globalAlbumHeading.setText(ad.getCampaignName());
 
                         if (globalProgressSlider != null) {
-                            globalProgressSlider.setDisable(true);
+                            globalProgressSlider.setValue(0);
+                            globalProgressSlider.setDisable(false);
                             globalProgressSlider.setMouseTransparent(true);
                         }
                         if (globalBottomBar != null && controlsUtil != null) {
@@ -1253,11 +1279,17 @@ public class PlayerController extends Application {
             @Override
             public void onSongResumed() {
                 AppLogger.log("[AdPlayer] Song resuming after ad");
+                isResumingSongFromAd = true;
 
                 Platform.runLater(() -> {
                     try {
-                        if (!playQueue.isEmpty() && currentTrackIndex >= 0 && currentTrackIndex < playQueue.size()) {
-                            PlaylistTrack track = playQueue.get(currentTrackIndex);
+                        if (!playQueue.isEmpty()) {
+                            int resumeIndex = currentTrackIndex;
+                            if (resumeIndex < 0 || resumeIndex >= playQueue.size()) {
+                                resumeIndex = 0;
+                                currentTrackIndex = 0;
+                            }
+                            PlaylistTrack track = playQueue.get(resumeIndex);
 
                             File encryptedFile = new File(SONGS_DIR, "song-" + track.getId() + ".dat");
 
@@ -1277,32 +1309,31 @@ public class PlayerController extends Application {
                                             String startTimeOpt = ":start-time=" + (savedTime / 1000.0f);
 
                                             vlcPlayer.audio().setVolume(0);
-                                            asyncExecutor.submit(() -> {
-                                                try {
-                                                    // Force volume 0 for 1.5 seconds without flooding JavaFX thread
-                                                    long endTime = System.currentTimeMillis() + 1500;
-                                                    while (System.currentTimeMillis() < endTime) {
-                                                        vlcPlayer.audio().setVolume(0);
-                                                        Thread.sleep(100);
-                                                    }
-                                                } catch (Exception e) {
-                                                }
-                                            });
-
                                             vlcPlayer.media().play(tempFile.getAbsolutePath(), startTimeOpt);
                                             vlcPlayer.audio().setVolume(0);
 
+                                            if (globalProgressSlider != null) {
+                                                globalProgressSlider.setDisable(false);
+                                                globalProgressSlider.setMouseTransparent(false);
+                                            }
+
+                                            if (crossfadeEngine != null) {
+                                                crossfadeEngine.setActiveTempFile(tempFile);
+                                                prepareNextTrackForCrossfade();
+                                            }
+
                                             schedular.schedule(() -> {
+                                                isResumingSongFromAd = false;
                                                 asyncExecutor.submit(() -> {
                                                     try {
-                                                        vlcPlayer.audio().setVolume(0);
-                                                        int steps = 20;
+                                                        int safeTargetVol = toSafeVlcVolume(originalVol);
+                                                        int steps = 10;
                                                         for (int i = 1; i <= steps; i++) {
-                                                            int currentVol = (int) (originalVol * ((double) i / steps));
+                                                            int currentVol = (int) (safeTargetVol * ((double) i / steps));
                                                             vlcPlayer.audio().setVolume(currentVol);
-                                                            Thread.sleep(100);
+                                                            Thread.sleep(50);
                                                         }
-                                                        vlcPlayer.audio().setVolume(originalVol);
+                                                        vlcPlayer.audio().setVolume(safeTargetVol);
                                                         
                                                         Platform.runLater(() -> {
                                                             if (globalBottomBar != null && controlsUtil != null) {
@@ -1315,10 +1346,11 @@ public class PlayerController extends Application {
                                                     } catch (Exception e) {
                                                     }
                                                 });
-                                            }, 1500, TimeUnit.MILLISECONDS);
+                                            }, 200, TimeUnit.MILLISECONDS);
                                         });
                                     } catch (Exception e) {
                                         e.printStackTrace();
+                                        isResumingSongFromAd = false;
                                     }
                                 });
                             } else if (NetworkMonitor.getInstance().isOnline()) {
@@ -1328,47 +1360,38 @@ public class PlayerController extends Application {
                                 String startTimeOpt = ":start-time=" + (savedTime / 1000.0f);
 
                                 vlcPlayer.audio().setVolume(0);
-                                asyncExecutor.submit(() -> {
-                                    try {
-                                        for (int i = 0; i < 50; i++) {
-                                            Platform.runLater(() -> {
-                                                try {
-                                                    vlcPlayer.audio().setVolume(0);
-                                                } catch (Exception ex) {
-                                                }
-                                            });
-                                            Thread.sleep(30);
-                                        }
-                                    } catch (Exception e) {
-                                    }
-                                });
-
                                 vlcPlayer.media().play(encodeMediaUrl(track.getUrl()), startTimeOpt);
                                 vlcPlayer.audio().setVolume(0);
 
+                                if (globalProgressSlider != null) {
+                                    globalProgressSlider.setDisable(false);
+                                    globalProgressSlider.setMouseTransparent(false);
+                                }
+
+                                if (crossfadeEngine != null) {
+                                    crossfadeEngine.setActiveTempFile(null);
+                                    prepareNextTrackForCrossfade();
+                                }
+
                                 schedular.schedule(() -> {
+                                    isResumingSongFromAd = false;
                                     asyncExecutor.submit(() -> {
                                         try {
-                                            Platform.runLater(() -> {
-                                                try {
-                                                    vlcPlayer.audio().setVolume(0);
-                                                } catch (Exception ex) {
-                                                }
-                                            });
-                                            int steps = 20;
+                                            int safeTargetVol = toSafeVlcVolume(originalVol);
+                                            int steps = 10;
                                             for (int i = 1; i <= steps; i++) {
-                                                int currentVol = (int) (originalVol * ((double) i / steps));
+                                                int currentVol = (int) (safeTargetVol * ((double) i / steps));
                                                 Platform.runLater(() -> {
                                                     try {
                                                         vlcPlayer.audio().setVolume(currentVol);
                                                     } catch (Exception ex) {
                                                     }
                                                 });
-                                                Thread.sleep(100);
+                                                Thread.sleep(50);
                                             }
                                             Platform.runLater(() -> {
                                                 try {
-                                                    vlcPlayer.audio().setVolume(originalVol);
+                                                    vlcPlayer.audio().setVolume(safeTargetVol);
                                                     if (globalBottomBar != null && controlsUtil != null) {
                                                         Slider volumeSlider = controlsUtil.getVolumeSlider(globalBottomBar);
                                                         if (volumeSlider != null) {
@@ -1381,25 +1404,27 @@ public class PlayerController extends Application {
                                         } catch (Exception e) {
                                         }
                                     });
-                                }, 1500, TimeUnit.MILLISECONDS);
+                                }, 200, TimeUnit.MILLISECONDS);
                             } else {
+                                isResumingSongFromAd = false;
                                 AppLogger.log("[AdPlayer] Cannot resume — offline and no local file. Playing next.");
                                 int musicVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
                                 AppLogger.log("[AdPlayer] Restoring music volume to: " + musicVol);
                                 if (vlcPlayer != null && vlcPlayer.audio() != null) {
-                                    vlcPlayer.audio().setVolume(musicVol);
+                                    vlcPlayer.audio().setVolume(toSafeVlcVolume(musicVol));
                                 }
                                 playNextTrack(globalAlbumHeading, globalTitleLabel,
                                         globalProgressSlider, null, null,
                                         globalControlsWrapper, globalBottomBar, null);
                             }
                         } else {
+                            isResumingSongFromAd = false;
                             AppLogger.log("[AdPlayer] No track to resume. Playing next.");
                             // Restore music volume before playing next track
                             int musicVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
                             AppLogger.log("[AdPlayer] Restoring music volume to: " + musicVol);
                             if (vlcPlayer != null && vlcPlayer.audio() != null) {
-                                vlcPlayer.audio().setVolume(musicVol);
+                                vlcPlayer.audio().setVolume(toSafeVlcVolume(musicVol));
                             }
                             if (globalBottomBar != null && controlsUtil != null) {
                                 Slider volumeSlider = controlsUtil.getVolumeSlider(globalBottomBar);
@@ -1953,7 +1978,7 @@ public class PlayerController extends Application {
                 int savedTrackId = prefs.getInt(PREF_RESUME_TRACK_ID, -1);
                 if (savedTrackId != -1) {
                     for (int i = 0; i < playQueue.size(); i++) {
-                        if (playQueue.get(i).getId() == savedTrackId) {
+                        if (Objects.equals(playQueue.get(i).getId(), savedTrackId)) {
                             currentTrackIndex = i;
                             AppLogger.log("[PlayerController] Resuming from saved track index: " + currentTrackIndex);
                             break;
@@ -2109,7 +2134,7 @@ public class PlayerController extends Application {
         titleLabel.setText(track.getTitle());
 
         if (crossfadeEngine != null) {
-            crossfadeEngine.cancelCrossfade();
+            crossfadeEngine.cancelCrossfade(true);
         }
 
         if (vlcPlayer != null && vlcPlayer.status().isPlaying()) {
@@ -2329,6 +2354,10 @@ public class PlayerController extends Application {
             @Override
             public void playing(MediaPlayer mediaPlayer) {
                 consecutiveErrorCount = 0;
+                // Early return on VLC thread if crossfading or if not active player
+                if (crossfadeEngine != null && (crossfadeEngine.isCrossfading() || mediaPlayer != crossfadeEngine.getActivePlayer())) {
+                    return;
+                }
                 Platform.runLater(() -> {
                     FontIcon bigIcon = controlsUtil.getBigPlayIcon(controlsWrapper);
                     if (bigIcon != null) {
@@ -2339,31 +2368,42 @@ public class PlayerController extends Application {
                         ledVuMeter.start();
                     }
                     // ✅ Enforce correct music volume when a song starts playing
-                    // (not during ad playback or active crossfade)
-                    if (crossfadeEngine != null && crossfadeEngine.isCrossfading()) {
+                    // (not during ad playback, resume transition, or active crossfade)
+                    if (crossfadeEngine != null && (crossfadeEngine.isCrossfading() || mediaPlayer != crossfadeEngine.getActivePlayer())) {
                         return;
                     }
-                    if (adPlayer == null || !adPlayer.isPlayingAd()) {
-                        int musicVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
-                        if (asyncExecutor != null) {
-                            asyncExecutor.submit(() -> {
-                                try {
-                                    Thread.sleep(500); // Give VLC time to initialize audio
-                                    int currentVlcVol = mediaPlayer.audio().volume();
-                                    if (currentVlcVol < 0 || Math.abs(currentVlcVol - musicVol) > 2) {
-                                        AppLogger.log("[PLAYER] Volume drift detected (VLC=" + currentVlcVol 
-                                            + ", expected=" + musicVol + "), correcting");
-                                        mediaPlayer.audio().setVolume(musicVol);
-                                    }
-                                } catch (Exception ignored) {}
-                            });
-                        }
+                    if (isResumingSongFromAd || (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds()))) {
+                        return;
+                    }
+                    int musicVol = Math.max(0, Math.min(100, (int) prefs.getDouble(PREF_VOLUME, DEFAULT_SAFE_VOLUME)));
+                    if (asyncExecutor != null) {
+                        asyncExecutor.submit(() -> {
+                            try {
+                                Thread.sleep(500); // Give VLC time to initialize audio
+                                if (crossfadeEngine != null && (crossfadeEngine.isCrossfading() || mediaPlayer != crossfadeEngine.getActivePlayer())) {
+                                    return;
+                                }
+                                if (isResumingSongFromAd || (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds()))) {
+                                    return;
+                                }
+                                int expectedVlcVol = toSafeVlcVolume(musicVol);
+                                int currentVlcVol = mediaPlayer.audio().volume();
+                                if (currentVlcVol < 0 || Math.abs(currentVlcVol - expectedVlcVol) > 2) {
+                                    AppLogger.log("[PLAYER] Volume drift detected (VLC=" + currentVlcVol 
+                                        + ", expected=" + expectedVlcVol + "), correcting");
+                                    mediaPlayer.audio().setVolume(expectedVlcVol);
+                                }
+                            } catch (Exception ignored) {}
+                        });
                     }
                 });
             }
 
             @Override
             public void paused(MediaPlayer mediaPlayer) {
+                if (isResumingSongFromAd || (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds()))) {
+                    return;
+                }
                 if (crossfadeEngine != null && mediaPlayer != crossfadeEngine.getActivePlayer()) {
                     return;
                 }
@@ -2384,7 +2424,7 @@ public class PlayerController extends Application {
                 if (crossfadeEngine != null && mediaPlayer != crossfadeEngine.getActivePlayer()) {
                     return;
                 }
-                if (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds())) {
+                if (isResumingSongFromAd || (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds()))) {
                     return;
                 }
                 Platform.runLater(() -> {
@@ -2408,6 +2448,8 @@ public class PlayerController extends Application {
                 if (now - lastTimeChangedMillis < 250)
                     return; // Throttle to 250ms
                 lastTimeChangedMillis = now;
+
+                boolean isAdActive = isResumingSongFromAd || (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds()));
 
                 Platform.runLater(() -> {
 
@@ -2437,7 +2479,8 @@ public class PlayerController extends Application {
                     }
                 });
 
-                if (crossfadeEngine != null) {
+                // ONLY trigger crossfade when regular song is playing, NEVER during ads or resume transition!
+                if (!isAdActive && crossfadeEngine != null) {
                     long duration = mediaPlayer.status().length();
                     crossfadeEngine.checkAndTriggerCrossfade(newTime, duration);
                 }
@@ -2446,8 +2489,8 @@ public class PlayerController extends Application {
             @Override
             public void finished(MediaPlayer mediaPlayer) {
 
-                if (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds())) {
-                    AppLogger.log("[PLAYER] Media finished but ad is active, ignoring");
+                if (isResumingSongFromAd || (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds()))) {
+                    AppLogger.log("[PLAYER] Media finished but ad or resume is active, ignoring");
                     return;
                 }
 
@@ -2489,7 +2532,7 @@ public class PlayerController extends Application {
                 if (crossfadeEngine != null && mediaPlayer != crossfadeEngine.getActivePlayer()) {
                     return;
                 }
-                if (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds())) {
+                if (isResumingSongFromAd || (adPlayer != null && (adPlayer.isPlayingAd() || adPlayer.isSongPausedForAds()))) {
                     return;
                 }
                 AppLogger.log("[PLAYER] VLC encountered an error during playback (skipped API DB log).");
@@ -2528,7 +2571,7 @@ public class PlayerController extends Application {
             Label downloadLabel) throws URISyntaxException {
 
         if (crossfadeEngine != null) {
-            crossfadeEngine.cancelCrossfade();
+            crossfadeEngine.cancelCrossfade(true);
         }
         currentTrackIndex++;
         AppLogger.log("[PLAYER] Next track index: " + currentTrackIndex);
@@ -2915,7 +2958,8 @@ public class PlayerController extends Application {
                 actualVlcVol = vlcPlayer.audio().volume();
             }
         } catch (Exception ignored) {}
-        boolean vlcVolumeDrifted = (actualVlcVol >= 0 && Math.abs(actualVlcVol - newMusicVolume) > 2);
+        int expectedVlcVol = toSafeVlcVolume(newMusicVolume);
+        boolean vlcVolumeDrifted = (actualVlcVol >= 0 && Math.abs(actualVlcVol - expectedVlcVol) > 2);
         boolean volumeNeedsUpdate = (newMusicVolume != currentSetVol) || vlcVolumeDrifted;
         boolean scheduleChanged = isFirstVolumeApply || !java.util.Objects.equals(currentScheduleId, targetScheduleId);
 
@@ -2932,7 +2976,7 @@ public class PlayerController extends Application {
                     if (crossfadeEngine != null) {
                         crossfadeEngine.setTargetVolume(newMusicVolume);
                     } else if (vlcPlayer != null && vlcPlayer.audio() != null) {
-                        vlcPlayer.audio().setVolume(newMusicVolume);
+                        vlcPlayer.audio().setVolume(toSafeVlcVolume(newMusicVolume));
                     }
                     if (globalBottomBar != null && controlsUtil != null) {
                         Slider volumeSlider = controlsUtil.getVolumeSlider(globalBottomBar);
@@ -3144,15 +3188,15 @@ public class PlayerController extends Application {
 
         asyncExecutor.submit(() -> {
             try {
+                // Short stabilization delay to let currentTrackIndex settle
+                Thread.sleep(500);
+
                 PlaylistTrack nextTrack = null;
                 synchronized (playQueue) {
                     if (playQueue.isEmpty()) {
                         return;
                     }
-                    int nextIndex = currentTrackIndex + 1;
-                    if (nextIndex >= playQueue.size()) {
-                        nextIndex = 0;
-                    }
+                    int nextIndex = (currentTrackIndex + 1) % playQueue.size();
                     nextTrack = playQueue.get(nextIndex);
                 }
 

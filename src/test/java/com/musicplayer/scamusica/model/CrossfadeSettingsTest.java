@@ -1,10 +1,19 @@
 package com.musicplayer.scamusica.model;
 
 import com.musicplayer.scamusica.util.OfflineCache;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class CrossfadeSettingsTest {
+
+    @AfterEach
+    public void cleanup() {
+        CrossfadeSettings disabled = new CrossfadeSettings();
+        disabled.setCrossfadeEnabled(false);
+        disabled.setCrossfadeDuration(CrossfadeSettings.DEFAULT_DURATION);
+        OfflineCache.saveCrossfadeSettings(disabled);
+    }
 
     @Test
     public void testDefaultDurationWhenNull() {
@@ -47,3 +56,4 @@ public class CrossfadeSettingsTest {
         assertEquals(8, loaded.getCrossfadeDuration());
     }
 }
+
